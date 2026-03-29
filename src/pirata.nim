@@ -30,14 +30,6 @@ proc fail(message: string) {.noinline, noreturn.} =
 proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
 proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
 
-func emptyMask*[K: enum](): QueryMask[K] =
-  {}
-
-func mask*[K: enum](kinds: varargs[K]): QueryMask[K] =
-  result = {}
-  for kind in kinds:
-    result.incl(kind)
-
 func containsAll*[K: enum](mask, required: QueryMask[K]): bool {.inline.} =
   required <= mask
 
@@ -144,11 +136,8 @@ proc registerTag*[K: enum](world: var PirataWorld[K]; kind: K) =
   )
   world.registered.incl(kind)
 
-proc newEntity*[K: enum](world: var PirataWorld[K]): Entity =
-  world.signatures.incl(emptyMask[K]())
-
 proc spawn*[K: enum](world: var PirataWorld[K]): Entity {.inline.} =
-  newEntity(world)
+  world.signatures.incl({})
 
 proc destroy*[K: enum](world: var PirataWorld[K]; entity: Entity) =
   world.ensureAlive(entity)
@@ -187,7 +176,7 @@ proc add*[K: enum](world: var PirataWorld[K]; entity: Entity; kind: K) =
     fail("component " & $kind & " requires payload data")
   world.signatures[entity].incl(kind)
 
-proc getImpl[T; K: enum](world: var PirataWorld[K]; entity: Entity; kind: K): var T =
+proc fetchImpl[T; K: enum](world: var PirataWorld[K]; entity: Entity; kind: K): var T =
   world.ensureAlive(entity)
   world.ensureRegistered(kind)
   if kind notin world.signatures[entity]:
@@ -219,12 +208,6 @@ iterator query*[K: enum](
     if entry.value.containsAll(all) and not entry.value.intersects(none):
       yield entry.e
 
-template registerComponent*[T](world: var typed; kind: typed) =
-  registerComponentImpl[T, typeof(kind)](world, kind)
-
-template get*[T](world: var typed; entity: Entity; kind: typed): untyped =
-  getImpl[T, typeof(kind)](world, entity, kind)
-
 proc register*[T; K: enum](
   world: var PirataWorld[K];
   kind: K;
@@ -238,4 +221,4 @@ proc fetch*[T; K: enum](
   kind: K;
   _: typedesc[T]
 ): var T {.inline.} =
-  getImpl[T, K](world, entity, kind)
+  fetchImpl[T, K](world, entity, kind)

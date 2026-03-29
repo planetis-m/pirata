@@ -23,14 +23,14 @@ type
     doubloons: int
 
 proc sail(world: var PirataWorld[ComponentKind]) =
-  for entity in world.query(mask(ckShip, ckPosition, ckVelocity), mask(ckSunk)):
+  for entity in world.query({ckShip, ckPosition, ckVelocity}, {ckSunk}):
     let drift = world.fetch(entity, ckVelocity, Velocity)
     world.fetch(entity, ckPosition, Position).x += drift.x
     world.fetch(entity, ckPosition, Position).y += drift.y
 
 proc fleetReport(world: var PirataWorld[ComponentKind]) =
   echo "Fleet report:"
-  for entity in world.query(mask(ckShip, ckPosition), mask(ckSunk)):
+  for entity in world.query({ckShip, ckPosition}, {ckSunk}):
     let ship = world.fetch(entity, ckShip, Ship)
     let pos = world.fetch(entity, ckPosition, Position)
     echo "  ", ship.name, " at (", pos.x, ", ", pos.y, "), crew=", ship.crew, ", rum=", ship.rum

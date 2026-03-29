@@ -58,7 +58,7 @@ proc main() =
   doAssert world.contains(tagged)
 
   var queried: seq[int] = @[]
-  for entity in world.query(mask(ckPosition), mask(ckTag)):
+  for entity in world.query({ckPosition}, {ckTag}):
     queried.add(entity.idx)
   queried.sort()
   doAssert queried == @[first.idx, moving.idx]

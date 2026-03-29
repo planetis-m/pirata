@@ -12,7 +12,7 @@ If you want an ECS that feels direct instead of ceremonial, this is the pitch:
 ## Why Use It?
 
 - It stays readable when the project grows. The core loop is still `spawn`, `add`, `fetch`, `remove`, `query`.
-- Tags are first-class. Register them once, attach them with `world.add(entity, ckTag)`, and filter them out with `mask(...)`.
+- Tags are first-class. Register them once, attach them with `world.add(entity, ckTag)`, and filter them out with plain set literals.
 - Component lookup is explicit. You own the component enum, so access stays predictable.
 - Entity handles recycle safely. Destroyed entities do not quietly turn into valid data again.
 - The world is a plain object and accidental copies are blocked.
@@ -71,7 +71,7 @@ world.add(pearl, ckShip, Ship(name: "Black Pearl"))
 world.add(pearl, ckPosition, Position(x: 10, y: 4))
 world.add(pearl, ckVelocity, Velocity(x: 2, y: 1))
 
-for entity in world.query(mask(ckShip, ckPosition, ckVelocity), mask(ckSunk)):
+for entity in world.query({ckShip, ckPosition, ckVelocity}, {ckSunk}):
   let drift = world.fetch(entity, ckVelocity, Velocity)
   world.fetch(entity, ckPosition, Position).x += drift.x
   world.fetch(entity, ckPosition, Position).y += drift.y
@@ -82,7 +82,7 @@ echo world.fetch(pearl, ckPosition, Position)
 What to notice:
 - `register(kind, Type)` creates payload storage for that component.
 - `registerTag(kind)` creates a component that lives only in the entity signature.
-- `mask(include...)` and `mask(exclude...)` keep queries simple and readable.
+- Query filters are native Nim sets, so `world.query({ckShip}, {ckSunk})` reads exactly like the data it matches.
 
 ## Pirate Demo
 
@@ -114,14 +114,14 @@ type
     doubloons: int
 
 proc sail(world: var PirataWorld[ComponentKind]) =
-  for entity in world.query(mask(ckShip, ckPosition, ckVelocity), mask(ckSunk)):
+  for entity in world.query({ckShip, ckPosition, ckVelocity}, {ckSunk}):
     let drift = world.fetch(entity, ckVelocity, Velocity)
     world.fetch(entity, ckPosition, Position).x += drift.x
     world.fetch(entity, ckPosition, Position).y += drift.y
 
 proc fleetReport(world: var PirataWorld[ComponentKind]) =
   echo "Fleet report:"
-  for entity in world.query(mask(ckShip, ckPosition), mask(ckSunk)):
+  for entity in world.query({ckShip, ckPosition}, {ckSunk}):
     let ship = world.fetch(entity, ckShip, Ship)
     let pos = world.fetch(entity, ckPosition, Position)
     echo "  ", ship.name, " at (", pos.x, ", ", pos.y, "), crew=", ship.crew, ", rum=", ship.rum
@@ -193,7 +193,7 @@ Why this example matters:
 Tags are useful for state like `Dead`, `Hidden`, `Sleeping`, `Selected`, or `NeedsSync`.
 
 ```nim
-for entity in world.query(mask(ckPosition, ckVelocity), mask(ckSleeping)):
+for entity in world.query({ckPosition, ckVelocity}, {ckSleeping}):
   let velocity = world.fetch(entity, ckVelocity, Velocity)
   world.fetch(entity, ckPosition, Position).x += velocity.x
   world.fetch(entity, ckPosition, Position).y += velocity.y
@@ -215,8 +215,8 @@ That pattern scales well because it stays obvious:
 - `world.remove(entity, ckPosition)`
 - `world.has(entity, ckPosition)`
 - `world.destroy(entity)`
-- `world.query(mask(...))`
-- `world.query(mask(include...), mask(exclude...))`
+- `world.query({ckPosition, ckVelocity})`
+- `world.query({ckShip}, {ckSunk})`
 
 ## Limits
 
