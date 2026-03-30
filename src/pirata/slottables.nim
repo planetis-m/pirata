@@ -27,22 +27,18 @@ proc allocBuf[T](count: int): ptr UncheckedArray[T] =
   else:
     result = cast[typeof(result)](allocShared0(bytes))
 
-proc freeBuf[T](buf: ptr UncheckedArray[T]) =
-  deallocShared(buf)
-
 proc `=destroy`*[T](table: var SlotTable[T]) {.raises: [].} =
   if not table.data.isNil:
     when not supportsCopyMem(Entry[T]):
       for idx in 0..<table.len:
         `=destroy`(table.entryRef(idx))
-    freeBuf(table.data)
-    table.data = nil
+    deallocShared(table.data)
   if not table.slots.isNil:
-    freeBuf(table.slots)
-    table.slots = nil
-  table.len = 0
-  table.capacity = 0
-  table.freeHead = invalidIdx
+    deallocShared(table.slots)
+
+proc `=wasMoved`*[T](table: var SlotTable[T]) {.raises: [].} =
+  table.slots = nil
+  table.data = nil
 
 proc `=copy`*[T](dest: var SlotTable[T]; src: SlotTable[T]) {.error.}
 proc `=dup`*[T](src: SlotTable[T]): SlotTable[T] {.error.}

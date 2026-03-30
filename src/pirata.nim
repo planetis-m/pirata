@@ -34,17 +34,13 @@ proc allocColumn[T](capacity: int): pointer =
   else:
     result = allocShared0(bytes)
 
-proc freeColumn(data: pointer) =
-  deallocShared(data)
-
 proc destroyColumnSlots[T](data: pointer; capacity: int) {.raises: [].} =
   when not supportsCopyMem(T):
     for slot in 0..<capacity:
       `=destroy`(asArray[T](data)[slot])
 
-proc freeColumnStorage(data: pointer) {.raises: [].} =
-  if not data.isNil:
-    freeColumn(data)
+proc freeColumnData(data: pointer) {.raises: [].} =
+  deallocShared(data)
 
 proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
   for kind in low(K)..high(K):
@@ -52,11 +48,14 @@ proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
     if not col.data.isNil:
       if col.destroySlots != nil:
         col.destroySlots(col.data, int(world.capacity))
-      col.freeData(col.data)
-    world.registry[kind] = default(Column)
-  world.registered = {}
-  world.capacity = 0
+      if col.freeData != nil:
+        col.freeData(col.data)
   `=destroy`(world.signatures)
+
+proc `=wasMoved`*[K](world: var PirataWorld[K]) {.raises: [].} =
+  `=wasMoved`(world.signatures)
+  for kind in low(K)..high(K):
+    world.registry[kind].data = nil
 
 proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
 proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
@@ -76,7 +75,7 @@ proc registerComponent[T; K: enum](world: var PirataWorld[K]; kind: K) =
   world.registry[kind] = Column(
     data: allocColumn[T](int(world.capacity)),
     destroySlots: when supportsCopyMem(T): nil else: destroyColumnSlots[T],
-    freeData: freeColumnStorage
+    freeData: freeColumnData
   )
   world.registered.incl(kind)
 
@@ -104,9 +103,6 @@ proc add*[T; K: enum](world: var PirataWorld[K]; entity: Entity; kind: K; value:
 proc add*[K: enum](world: var PirataWorld[K]; entity: Entity; kind: K) =
   world.signature(entity).incl(kind)
 
-proc fetchSlot[T; K: enum](world: var PirataWorld[K]; entity: Entity; kind: K): var T =
-  asArray[T](world.registry[kind].data)[entity.idx]
-
 proc remove*[K: enum](world: var PirataWorld[K]; entity: Entity; kind: K) =
   world.signature(entity).excl(kind)
 
@@ -119,4 +115,4 @@ proc register*[T; K: enum](world: var PirataWorld[K]; kind: K; _: typedesc[T]) {
   registerComponent[T, K](world, kind)
 
 proc fetch*[T; K: enum](world: var PirataWorld[K]; entity: Entity; kind: K; _: typedesc[T]): var T {.inline.} =
-  fetchSlot[T, K](world, entity, kind)
+  asArray[T](world.registry[kind].data)[entity.idx]

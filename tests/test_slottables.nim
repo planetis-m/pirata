@@ -25,6 +25,16 @@ proc makeHookTracker(id: int): HookTracker =
   result.token = cast[ptr int](alloc(sizeof(int)))
   result.token[] = id
 
+proc verifyMoveDoesNotDoubleDestroy() =
+  destroyedTokens.setLen(0)
+  block:
+    var table = initSlotTableOfCap[HookTracker](4)
+    let tracked = table.incl(makeHookTracker(1))
+    var movedTable = move(table)
+    doAssert movedTable.contains(tracked)
+    doAssert movedTable[tracked].id == 1
+  doAssert destroyedTokens.len == 1
+
 proc main() =
   destroyedTokens.setLen(0)
   block:
@@ -39,6 +49,7 @@ proc main() =
     doAssert table[secondTracked].id == 2
     doAssert table[thirdTracked].id == 3
   doAssert destroyedTokens.len == 3
+  verifyMoveDoesNotDoubleDestroy()
 
 when isMainModule:
   main()

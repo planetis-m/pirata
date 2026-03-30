@@ -141,10 +141,21 @@ proc verifyOwnedComponentOverwrite() =
     doAssert world.fetch(entity, ckOwned, HookTracker).id == 2
   doAssert destroyedTokens.len == 2
 
+proc verifyWorldMoveDoesNotDoubleDestroy() =
+  destroyedTokens.setLen(0)
+  block:
+    var world = initWorld(4)
+    let entity = world.spawn()
+    world.add(entity, ckOwned, makeHookTracker(1))
+    var movedWorld = move(world)
+    doAssert movedWorld.fetch(entity, ckOwned, HookTracker).id == 1
+  doAssert destroyedTokens.len == 1
+
 proc main() =
   verifyBasicWorldFlow()
   verifyDeferredOwnedCleanup()
   verifyOwnedComponentOverwrite()
+  verifyWorldMoveDoesNotDoubleDestroy()
 
 when isMainModule:
   main()
