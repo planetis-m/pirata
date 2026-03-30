@@ -3,7 +3,6 @@ import typetraits
 import ./pirata/[entities, slottables]
 
 export entities
-export slottables
 
 type
   PirataError* = object of CatchableError
@@ -39,10 +38,10 @@ template forEachLivePayload(world, entity, kind, entry, body: untyped) =
 
 proc `=trace`*[K](world: var PirataWorld[K]; env: pointer) {.raises: [].}
 
-func containsAll*[K: enum](mask, required: QueryMask[K]): bool {.inline.} =
+func containsAll[K: enum](mask, required: QueryMask[K]): bool {.inline.} =
   required <= mask
 
-func intersects*[K: enum](a, b: QueryMask[K]): bool {.inline.} =
+func intersects[K: enum](a, b: QueryMask[K]): bool {.inline.} =
   (a * b) != {}
 
 proc allocColumn[T](capacity: int): pointer =

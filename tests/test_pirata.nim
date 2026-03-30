@@ -106,20 +106,6 @@ proc main() =
   let position = world.fetch(recycled, ckPosition, Position)
   doAssert position.x == 5
   doAssert position.y == 6
-
-  destroyedTokens.setLen(0)
-  block:
-    var table = initSlotTableOfCap[HookTracker](4)
-    let firstTracked = table.incl(makeHookTracker(1))
-    let secondTracked = table.incl(makeHookTracker(2))
-    let thirdTracked = table.incl(makeHookTracker(3))
-    table.del(firstTracked)
-    doAssert table.contains(secondTracked)
-    doAssert table.contains(thirdTracked)
-    doAssert table[secondTracked].id == 2
-    doAssert table[thirdTracked].id == 3
-  doAssert destroyedTokens.len == 3
-
   destroyedTokens.setLen(0)
   block:
     var ownedWorld = newPirata[ComponentKind](8)
