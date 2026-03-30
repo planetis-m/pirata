@@ -19,22 +19,23 @@ If you want an ECS that feels direct instead of ceremonial, this is the pitch:
 
 ## Install
 
-`pirata` currently lives inside this repository. Add the source directory to your Nim path:
+Install `pirata` like any other Nim package.
 
-```text
---path:"libs/pirata/src"
+Add it to your `.nimble` file:
+
+```nim
+# your_project.nimble
+requires "https://github.com/planetis-m/pirata"
 ```
 
-Then import it:
+Then resolve dependencies and import it normally:
+
+```bash
+nimble sync
+```
 
 ```nim
 import pirata
-```
-
-You can compile a file directly with:
-
-```bash
-nim c -r --path:libs/pirata/src your_game.nim
 ```
 
 ## Two-Minute Start
@@ -89,7 +90,7 @@ What to notice:
 The full example lives in [`examples/pirates.nim`](./examples/pirates.nim). It builds a tiny fleet, sails only the ships that are still afloat, loots a treasure chest, and updates the winner's crew and rum.
 
 ```nim
-import ../src/pirata
+import pirata
 
 type
   ComponentKind = enum
@@ -233,8 +234,11 @@ That pattern scales well because it stays obvious:
 Run the pirate example:
 
 ```bash
-nim c -r libs/pirata/examples/pirates.nim
+cd examples
+nim c -r pirates.nim
 ```
+
+`examples/config.nims` is only there so the in-repo example can import the local checkout as `import pirata`.
 
 Run the test modules:
 

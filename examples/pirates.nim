@@ -1,4 +1,4 @@
-import ../src/pirata
+import pirata
 
 type
   ComponentKind = enum
