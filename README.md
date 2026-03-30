@@ -236,14 +236,16 @@ Run the pirate example:
 nim c -r libs/pirata/examples/pirates.nim
 ```
 
-Run the test module:
+Run the test modules:
 
 ```bash
 nim c -r libs/pirata/tests/test_pirata.nim
+nim c -r libs/pirata/tests/test_slottables.nim
 ```
 
 Run the micro-benchmarks:
 
 ```bash
 nimble benchmark
+nimble benchmark_asan
 ```

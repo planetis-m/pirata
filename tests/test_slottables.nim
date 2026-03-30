@@ -33,6 +33,7 @@ proc main() =
     let secondTracked = table.incl(makeHookTracker(2))
     let thirdTracked = table.incl(makeHookTracker(3))
     table.del(firstTracked)
+    doAssert destroyedTokens.len == 1
     doAssert table.contains(secondTracked)
     doAssert table.contains(thirdTracked)
     doAssert table[secondTracked].id == 2

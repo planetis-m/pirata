@@ -9,7 +9,6 @@ type
     ckTag
     ckPayload
     ckOwned
-    ckUnused
 
   Position = object
     x, y: float32
@@ -44,14 +43,16 @@ proc makeHookTracker(id: int): HookTracker =
   result.token = cast[ptr int](alloc(sizeof(int)))
   result.token[] = id
 
+proc initWorld(capacity = 16): PirataWorld[ComponentKind] =
+  result = newPirata[ComponentKind](capacity)
+  result.register(ckPosition, Position)
+  result.register(ckVelocity, Velocity)
+  result.registerTag(ckTag)
+  result.register(ckPayload, Payload)
+  result.register(ckOwned, HookTracker)
+
 proc verifyBasicWorldFlow() =
-  var world = newPirata[ComponentKind](16)
-  world.register(ckPosition, Position)
-  world.register(ckVelocity, Velocity)
-  world.registerTag(ckTag)
-  world.register(ckPayload, Payload)
-  world.register(ckOwned, HookTracker)
-  world.registerTag(ckUnused)
+  var world = initWorld()
 
   let first = world.spawn()
   doAssert world.contains(first)
@@ -100,11 +101,10 @@ proc verifyBasicWorldFlow() =
   doAssert position.x == 5
   doAssert position.y == 6
 
-proc verifyOwnedComponentCleanup() =
+proc verifyDeferredOwnedCleanup() =
   destroyedTokens.setLen(0)
   block:
-    var ownedWorld = newPirata[ComponentKind](8)
-    ownedWorld.register(ckOwned, HookTracker)
+    var ownedWorld = initWorld(8)
     let keptEntity = ownedWorld.spawn()
     let removedEntity = ownedWorld.spawn()
     ownedWorld.add(keptEntity, ckOwned, makeHookTracker(10))
@@ -115,23 +115,9 @@ proc verifyOwnedComponentCleanup() =
     doAssert destroyedTokens.len == 0
   doAssert destroyedTokens.len == 2
 
-proc verifyOwnedComponentOverwrite() =
   destroyedTokens.setLen(0)
   block:
-    var world = newPirata[ComponentKind](4)
-    world.register(ckOwned, HookTracker)
-    let entity = world.spawn()
-    world.add(entity, ckOwned, makeHookTracker(1))
-    world.add(entity, ckOwned, makeHookTracker(2))
-    doAssert destroyedTokens.len == 1
-    doAssert world.fetch(entity, ckOwned, HookTracker).id == 2
-  doAssert destroyedTokens.len == 2
-
-proc verifyDestroyedSlotIsCleanedOnReuse() =
-  destroyedTokens.setLen(0)
-  block:
-    var world = newPirata[ComponentKind](4)
-    world.register(ckOwned, HookTracker)
+    var world = initWorld(4)
     let first = world.spawn()
     world.add(first, ckOwned, makeHookTracker(10))
     world.destroy(first)
@@ -144,11 +130,21 @@ proc verifyDestroyedSlotIsCleanedOnReuse() =
     doAssert world.fetch(recycled, ckOwned, HookTracker).id == 20
   doAssert destroyedTokens.len == 2
 
+proc verifyOwnedComponentOverwrite() =
+  destroyedTokens.setLen(0)
+  block:
+    var world = initWorld(4)
+    let entity = world.spawn()
+    world.add(entity, ckOwned, makeHookTracker(1))
+    world.add(entity, ckOwned, makeHookTracker(2))
+    doAssert destroyedTokens.len == 1
+    doAssert world.fetch(entity, ckOwned, HookTracker).id == 2
+  doAssert destroyedTokens.len == 2
+
 proc main() =
   verifyBasicWorldFlow()
-  verifyOwnedComponentCleanup()
+  verifyDeferredOwnedCleanup()
   verifyOwnedComponentOverwrite()
-  verifyDestroyedSlotIsCleanedOnReuse()
 
 when isMainModule:
   main()
