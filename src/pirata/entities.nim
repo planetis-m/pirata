@@ -9,16 +9,16 @@ const
   indexMask = (EntityImpl(1) shl indexBits) - 1
   maxEntities* = 8191
 
-template idx*(e: Entity): int =
-  int(e.EntityImpl and indexMask)
+func idx*(entity: Entity): int {.inline.} =
+  int(EntityImpl(entity) and indexMask)
 
-template version*(e: Entity): EntityImpl =
-  e.EntityImpl shr indexBits
+func version*(entity: Entity): EntityImpl {.inline.} =
+  EntityImpl(entity) shr indexBits
 
-template toEntity*(idx, v: EntityImpl): Entity =
-  Entity(((v and versionMask) shl indexBits) or (idx and indexMask))
+func toEntity*(idx, ver: EntityImpl): Entity {.inline.} =
+  Entity(((ver and versionMask) shl indexBits) or (idx and indexMask))
 
 proc `==`*(a, b: Entity): bool {.borrow.}
 
-func `$`*(e: Entity): string {.inline.} =
-  "Entity(i: " & $e.idx & ", v: " & $e.version & ")"
+func `$`*(entity: Entity): string {.inline.} =
+  "Entity(i: " & $entity.idx & ", v: " & $entity.version & ")"

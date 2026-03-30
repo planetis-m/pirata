@@ -14,47 +14,43 @@ type
     slots: ptr UncheckedArray[Entity]
     data: ptr UncheckedArray[Entry[T]]
 
-template slotAt[T](x: SlotTable[T]; i: int): var Entity =
-  x.slots[i]
+template slotRef[T](table: SlotTable[T]; idx: int): var Entity =
+  table.slots[idx]
 
-template dataAt[T](x: SlotTable[T]; i: int): var Entry[T] =
-  x.data[i]
+template entryRef[T](table: SlotTable[T]; idx: int): var Entry[T] =
+  table.data[idx]
 
-proc allocArray[T](count: int): ptr UncheckedArray[T] =
+proc allocBuf[T](count: int): ptr UncheckedArray[T] =
   let bytes = count * sizeof(T)
   when supportsCopyMem(T):
     result = cast[typeof(result)](allocShared(bytes))
   else:
     result = cast[typeof(result)](allocShared0(bytes))
 
-proc freeArray[T](p: ptr UncheckedArray[T]) =
-  deallocShared(p)
+proc freeBuf[T](buf: ptr UncheckedArray[T]) =
+  deallocShared(buf)
 
-template forEachLiveIndex(x, i, body: untyped) =
-  for i {.inject.} in 0..<x.len:
-    body
+proc `=trace`*[T](table: var SlotTable[T]; env: pointer) {.raises: [].}
 
-proc `=trace`*[T](x: var SlotTable[T]; env: pointer) {.raises: [].}
-
-proc `=destroy`*[T](x: var SlotTable[T]) {.raises: [].} =
-  if not x.data.isNil:
+proc `=destroy`*[T](table: var SlotTable[T]) {.raises: [].} =
+  if not table.data.isNil:
     when not supportsCopyMem(Entry[T]):
-      forEachLiveIndex(x, i):
-        `=destroy`(x.dataAt(i))
-    freeArray(x.data)
-    x.data = nil
-  if not x.slots.isNil:
-    freeArray(x.slots)
-    x.slots = nil
-  x.len = 0
-  x.capacity = 0
-  x.freeHead = 0
+      for idx in 0..<table.len:
+        `=destroy`(table.entryRef(idx))
+    freeBuf(table.data)
+    table.data = nil
+  if not table.slots.isNil:
+    freeBuf(table.slots)
+    table.slots = nil
+  table.len = 0
+  table.capacity = 0
+  table.freeHead = 0
 
-proc `=trace`*[T](x: var SlotTable[T]; env: pointer) {.raises: [].} =
+proc `=trace`*[T](table: var SlotTable[T]; env: pointer) {.raises: [].} =
   when not supportsCopyMem(Entry[T]):
-    if not x.data.isNil:
-      forEachLiveIndex(x, i):
-        `=trace`(x.dataAt(i), env)
+    if not table.data.isNil:
+      for idx in 0..<table.len:
+        `=trace`(table.entryRef(idx), env)
 
 proc `=copy`*[T](dest: var SlotTable[T]; src: SlotTable[T]) {.error.}
 proc `=dup`*[T](src: SlotTable[T]): SlotTable[T] {.error.}
@@ -63,75 +59,73 @@ proc initSlotTableOfCap*[T](capacity: Natural): SlotTable[T] =
   result = default(SlotTable[T])
   result.capacity = capacity.int
   result.freeHead = 0
-  result.slots = allocArray[Entity](result.capacity)
-  result.data = allocArray[Entry[T]](result.capacity)
-  for i in 0 ..< result.capacity:
-    let next = if i + 1 < result.capacity: i + 1 else: result.capacity
-    result.slotAt(i) = toEntity(next.EntityImpl, 0)
+  result.slots = allocBuf[Entity](result.capacity)
+  result.data = allocBuf[Entry[T]](result.capacity)
+  for idx in 0..<result.capacity:
+    let next = if idx + 1 < result.capacity: idx + 1 else: result.capacity
+    result.slotRef(idx) = toEntity(next.EntityImpl, 0)
 
-proc lookupIndex*[T](x: SlotTable[T]; e: Entity): int {.inline.} =
-  let idx = e.idx
-  if idx >= x.capacity or (e.version and 1) == 0:
+proc lookupIndex*[T](table: SlotTable[T]; entity: Entity): int {.inline.} =
+  let idx = entity.idx
+  if idx >= table.capacity or (entity.version and 1) == 0:
     return -1
 
-  let slot = x.slotAt(idx)
-  if slot.version != e.version:
+  let slot = table.slotRef(idx)
+  if slot.version != entity.version:
     return -1
 
   slot.idx
 
-proc contains*[T](x: SlotTable[T]; e: Entity): bool {.inline.} =
-  x.lookupIndex(e) >= 0
+proc contains*[T](table: SlotTable[T]; entity: Entity): bool {.inline.} =
+  table.lookupIndex(entity) >= 0
 
-template valueAtIndex*[T](x: SlotTable[T]; i: int): untyped =
-  x.dataAt(i).value
+template valueAtIndex*[T](table: SlotTable[T]; idx: int): untyped =
+  table.entryRef(idx).value
 
-template valueAtSlot*[T](x: SlotTable[T]; slotIdx: int): untyped =
-  x.dataAt(x.slotAt(slotIdx).idx).value
+template valueAtSlot*[T](table: SlotTable[T]; slotIdx: int): untyped =
+  table.entryRef(table.slotRef(slotIdx).idx).value
 
-proc incl*[T](x: var SlotTable[T]; value: sink T): Entity =
-  let slotIdx = x.freeHead
-  template slot: untyped = x.slotAt(slotIdx)
-  let occupiedVersion = slot.version or 1
-  result = toEntity(slotIdx.EntityImpl, occupiedVersion)
-  x.freeHead = slot.idx
-  x.dataAt(x.len) = Entry[T](e: result, value: value)
-  slot = toEntity(x.len.EntityImpl, occupiedVersion)
-  inc x.len
+proc incl*[T](table: var SlotTable[T]; value: sink T): Entity =
+  let slotIdx = table.freeHead
+  template slot: untyped = table.slotRef(slotIdx)
+  let liveVersion = slot.version or 1
+  result = toEntity(slotIdx.EntityImpl, liveVersion)
+  table.freeHead = slot.idx
+  table.entryRef(table.len) = Entry[T](e: result, value: value)
+  slot = toEntity(table.len.EntityImpl, liveVersion)
+  inc table.len
 
-proc delFromSlot[T](x: var SlotTable[T]; slotIdx: int) {.inline.} =
-  template slot: untyped = x.slotAt(slotIdx)
+proc removeSlot[T](table: var SlotTable[T]; slotIdx: int) {.inline.} =
+  template slot: untyped = table.slotRef(slotIdx)
   let valueIdx = slot.idx
-  let lastIdx = x.len - 1
-  slot = toEntity(x.freeHead.EntityImpl, slot.version + 1)
-  x.freeHead = slotIdx
+  let lastIdx = table.len - 1
+  slot = toEntity(table.freeHead.EntityImpl, slot.version + 1)
+  table.freeHead = slotIdx
 
   if valueIdx != lastIdx:
-    x.dataAt(valueIdx) = move(x.dataAt(lastIdx))
-    let movedSlotIdx = x.dataAt(valueIdx).e.idx
-    x.slotAt(movedSlotIdx) = toEntity(valueIdx.EntityImpl, x.slotAt(movedSlotIdx).version)
+    table.entryRef(valueIdx) = move(table.entryRef(lastIdx))
+    let movedSlotIdx = table.entryRef(valueIdx).e.idx
+    table.slotRef(movedSlotIdx) =
+      toEntity(valueIdx.EntityImpl, table.slotRef(movedSlotIdx).version)
   else:
     when not supportsCopyMem(Entry[T]):
-      `=destroy`(x.dataAt(lastIdx))
+      `=destroy`(table.entryRef(lastIdx))
 
-  dec x.len
+  dec table.len
 
-proc delAt*[T](x: var SlotTable[T]; slotIdx: int) {.inline.} =
-  x.delFromSlot(slotIdx)
+proc delAt*[T](table: var SlotTable[T]; slotIdx: int) {.inline.} =
+  table.removeSlot(slotIdx)
 
-proc del*[T](x: var SlotTable[T]; e: Entity) =
-  if x.contains(e):
-    x.delFromSlot(e.idx)
+proc del*[T](table: var SlotTable[T]; entity: Entity) =
+  if table.contains(entity):
+    table.removeSlot(entity.idx)
 
-template getValue(x, e) =
-  result = x.valueAtSlot(e.idx)
+proc `[]`*[T](table: SlotTable[T]; entity: Entity): lent T =
+  table.valueAtSlot(entity.idx)
 
-proc `[]`*[T](x: SlotTable[T]; e: Entity): lent T =
-  getValue(x, e)
+proc `[]`*[T](table: var SlotTable[T]; entity: Entity): var T =
+  table.valueAtSlot(entity.idx)
 
-proc `[]`*[T](x: var SlotTable[T]; e: Entity): var T =
-  getValue(x, e)
-
-iterator pairs*[T](x: SlotTable[T]): lent Entry[T] =
-  for i in 0..<x.len:
-    yield x.dataAt(i)
+iterator pairs*[T](table: SlotTable[T]): lent Entry[T] =
+  for idx in 0..<table.len:
+    yield table.entryRef(idx)
