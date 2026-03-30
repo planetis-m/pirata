@@ -10,6 +10,7 @@ type
     ckHealth
     ckSleeping
     ckMarker
+    ckOwned
 
   Position = object
     x, y: float32
@@ -19,6 +20,10 @@ type
 
   Health = object
     hp: int32
+
+  OwnedPayload = object
+    value: int32
+    token: ptr int32
 
   BenchmarkResult = object
     name: string
@@ -31,8 +36,23 @@ const
   SlotCapacity = 4096
   WorldCapacity = 4096
   Runs = 9
+  OwnedRounds = 64
 
 var sinkChecksum {.global.}: int64
+
+proc `=destroy`(x: OwnedPayload) =
+  if x.token != nil:
+    dealloc(x.token)
+
+proc `=wasMoved`(x: var OwnedPayload) =
+  x.token = nil
+
+proc `=copy`(dest: var OwnedPayload; src: OwnedPayload) {.error.}
+
+proc makeOwnedPayload(value: int32): OwnedPayload =
+  result = OwnedPayload(value: value, token: nil)
+  result.token = cast[ptr int32](alloc(sizeof(int32)))
+  result.token[] = value
 
 proc median(values: seq[float]): float =
   let mid = values.len shr 1
@@ -221,6 +241,47 @@ proc benchDestroyPayloadDense(): tuple[ops: int64, checksum: int64] =
   consume(sum)
   (ops: int64(WorldCapacity), checksum: sum)
 
+proc benchOwnedDestroyRespawn(): tuple[ops: int64, checksum: int64] =
+  var world = newPirata[ComponentKind](WorldCapacity)
+  world.register(ckOwned, OwnedPayload)
+  var entities = newSeq[Entity](WorldCapacity)
+  var sum = 0'i64
+
+  for round in 0 ..< OwnedRounds:
+    for i in 0 ..< WorldCapacity:
+      let entity = world.spawn()
+      entities[i] = entity
+      world.add(entity, ckOwned, makeOwnedPayload(int32(i + round)))
+
+    for entity in entities:
+      sum += int64(world.fetch(entity, ckOwned, OwnedPayload).value)
+      world.destroy(entity)
+
+  consume(sum)
+  (ops: int64(WorldCapacity) * OwnedRounds * 2, checksum: sum)
+
+proc benchOwnedRemoveReadd(): tuple[ops: int64, checksum: int64] =
+  var world = newPirata[ComponentKind](WorldCapacity)
+  world.register(ckOwned, OwnedPayload)
+  var entities = newSeq[Entity](WorldCapacity)
+  var sum = 0'i64
+
+  for i in 0 ..< WorldCapacity:
+    let entity = world.spawn()
+    entities[i] = entity
+    world.add(entity, ckOwned, makeOwnedPayload(int32(i)))
+
+  for round in 0 ..< OwnedRounds:
+    for entity in entities:
+      world.remove(entity, ckOwned)
+
+    for i, entity in entities:
+      world.add(entity, ckOwned, makeOwnedPayload(int32(i + round + 1)))
+      sum += int64(world.fetch(entity, ckOwned, OwnedPayload).value)
+
+  consume(sum)
+  (ops: int64(WorldCapacity) * OwnedRounds * 2, checksum: sum)
+
 proc printResult(result: BenchmarkResult) =
   echo alignLeft(result.name, 28),
     align($result.ops, 12),
@@ -235,11 +296,16 @@ proc main() =
     runBench("add_fetch_remove", benchAddFetchRemovePayload),
     runBench("tag_toggle", benchTagToggle),
     runBench("query_update", benchQueryUpdate),
-    runBench("destroy_payload_dense", benchDestroyPayloadDense)
+    runBench("destroy_payload_dense", benchDestroyPayloadDense),
+    runBench("owned_destroy_respawn", benchOwnedDestroyRespawn),
+    runBench("owned_remove_readd", benchOwnedRemoveReadd)
   ]
 
   echo "pirata microbench"
-  echo "build: nim c -d:danger -r benchmarks/microbench.nim"
+  when defined(addressSanitizer):
+    echo "build: nim c -d:danger -d:addressSanitizer -r benchmarks/microbench.nim"
+  else:
+    echo "build: nim c -d:danger -r benchmarks/microbench.nim"
   echo ""
   echo alignLeft("benchmark", 28),
     align("ops", 12),

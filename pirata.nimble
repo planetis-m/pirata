@@ -10,3 +10,6 @@ requires "nim >= 1.6.0"
 
 task benchmark, "Builds and runs the micro-benchmark suite":
   exec("nim c -d:danger -r benchmarks/microbench.nim")
+
+task benchmark_asan, "Builds and runs the micro-benchmark suite under AddressSanitizer":
+  exec("nim c -d:danger -d:addressSanitizer -r benchmarks/microbench.nim")

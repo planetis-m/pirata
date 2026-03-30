@@ -30,8 +30,6 @@ proc allocBuf[T](count: int): ptr UncheckedArray[T] =
 proc freeBuf[T](buf: ptr UncheckedArray[T]) =
   deallocShared(buf)
 
-proc `=trace`*[T](table: var SlotTable[T]; env: pointer) {.raises: [].}
-
 proc `=destroy`*[T](table: var SlotTable[T]) {.raises: [].} =
   if not table.data.isNil:
     when not supportsCopyMem(Entry[T]):
@@ -45,12 +43,6 @@ proc `=destroy`*[T](table: var SlotTable[T]) {.raises: [].} =
   table.len = 0
   table.capacity = 0
   table.freeHead = invalidIdx
-
-proc `=trace`*[T](table: var SlotTable[T]; env: pointer) {.raises: [].} =
-  when not supportsCopyMem(Entry[T]):
-    if not table.data.isNil:
-      for idx in 0..<table.len:
-        `=trace`(table.entryRef(idx), env)
 
 proc `=copy`*[T](dest: var SlotTable[T]; src: SlotTable[T]) {.error.}
 proc `=dup`*[T](src: SlotTable[T]): SlotTable[T] {.error.}

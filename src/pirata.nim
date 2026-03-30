@@ -9,8 +9,7 @@ type
 
   Column = object
     data: pointer
-    clearSlot: proc (data: pointer; slot: int) {.nimcall, raises: [].}
-    traceSlot: proc (data: pointer; slot: int; env: pointer) {.nimcall, raises: [].}
+    destroySlots: proc (data: pointer; capacity: int) {.nimcall, raises: [].}
     freeData: proc (data: pointer) {.nimcall, raises: [].}
 
   PirataWorld*[K: enum] = object
@@ -21,8 +20,6 @@ type
 
 template asArray[T](data: pointer): ptr UncheckedArray[T] =
   cast[ptr UncheckedArray[T]](data)
-
-proc `=trace`*[K](world: var PirataWorld[K]; env: pointer) {.raises: [].}
 
 func containsAll[K: enum](mask, required: QueryMask[K]): bool {.inline.} =
   required <= mask
@@ -40,44 +37,26 @@ proc allocColumn[T](capacity: int): pointer =
 proc freeColumn(data: pointer) =
   deallocShared(data)
 
-proc clearColumnSlot[T](data: pointer; slot: int) {.raises: [].} =
-  when supportsCopyMem(T):
-    zeroMem(addr asArray[T](data)[slot], sizeof(T))
-  else:
-    reset(asArray[T](data)[slot])
-
-proc traceColumnSlot[T](data: pointer; slot: int; env: pointer) {.raises: [].} =
+proc destroyColumnSlots[T](data: pointer; capacity: int) {.raises: [].} =
   when not supportsCopyMem(T):
-    `=trace`(asArray[T](data)[slot], env)
+    for slot in 0..<capacity:
+      `=destroy`(asArray[T](data)[slot])
 
 proc freeColumnStorage(data: pointer) {.raises: [].} =
   if not data.isNil:
     freeColumn(data)
 
 proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
-  for signatureEntry in world.signatures.pairs:
-    let entity = signatureEntry.e
-    for kind in signatureEntry.value:
-      let col = world.registry[kind]
-      if not col.data.isNil:
-        col.clearSlot(col.data, entity.idx)
   for kind in low(K)..high(K):
     let col = world.registry[kind]
     if not col.data.isNil:
+      if col.destroySlots != nil:
+        col.destroySlots(col.data, int(world.capacity))
       col.freeData(col.data)
     world.registry[kind] = default(Column)
   world.registered = {}
   world.capacity = 0
   `=destroy`(world.signatures)
-
-proc `=trace`*[K](world: var PirataWorld[K]; env: pointer) {.raises: [].} =
-  `=trace`(world.signatures, env)
-  for signatureEntry in world.signatures.pairs:
-    let entity = signatureEntry.e
-    for kind in signatureEntry.value:
-      let col = world.registry[kind]
-      if not col.data.isNil:
-        col.traceSlot(col.data, entity.idx, env)
 
 proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
 proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
@@ -96,8 +75,7 @@ template signature[K: enum](world: PirataWorld[K]; entity: Entity): untyped =
 proc registerComponent[T; K: enum](world: var PirataWorld[K]; kind: K) =
   world.registry[kind] = Column(
     data: allocColumn[T](int(world.capacity)),
-    clearSlot: clearColumnSlot[T],
-    traceSlot: traceColumnSlot[T],
+    destroySlots: when supportsCopyMem(T): nil else: destroyColumnSlots[T],
     freeData: freeColumnStorage
   )
   world.registered.incl(kind)
@@ -105,8 +83,7 @@ proc registerComponent[T; K: enum](world: var PirataWorld[K]; kind: K) =
 proc registerTag*[K: enum](world: var PirataWorld[K]; kind: K) =
   world.registry[kind] = Column(
     data: nil,
-    clearSlot: nil,
-    traceSlot: nil,
+    destroySlots: nil,
     freeData: nil
   )
   world.registered.incl(kind)
@@ -115,11 +92,6 @@ proc spawn*[K: enum](world: var PirataWorld[K]): Entity {.inline.} =
   world.signatures.incl({})
 
 proc destroy*[K: enum](world: var PirataWorld[K]; entity: Entity) =
-  let mask = world.signature(entity)
-  for kind in mask:
-    let col = world.registry[kind]
-    if not col.data.isNil:
-      col.clearSlot(col.data, entity.idx)
   world.signatures.delAt(entity.idx)
 
 proc has*[K: enum](world: PirataWorld[K]; entity: Entity; kind: K): bool =
@@ -136,9 +108,6 @@ proc fetchSlot[T; K: enum](world: var PirataWorld[K]; entity: Entity; kind: K): 
   asArray[T](world.registry[kind].data)[entity.idx]
 
 proc remove*[K: enum](world: var PirataWorld[K]; entity: Entity; kind: K) =
-  let col = world.registry[kind]
-  if not col.data.isNil:
-    col.clearSlot(col.data, entity.idx)
   world.signature(entity).excl(kind)
 
 iterator query*[K: enum](world: PirataWorld[K], all: QueryMask[K] = {}, none: QueryMask[K] = {}): Entity =
