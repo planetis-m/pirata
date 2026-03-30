@@ -18,13 +18,14 @@ type
   Payload = object
     text: string
 
-proc expectPirataError(body: proc ()) =
-  var raised = false
-  try:
-    body()
-  except PirataError:
-    raised = true
-  doAssert raised, "Expected a PirataError"
+when runtimeChecksEnabled:
+  proc expectPirataError(body: proc ()) =
+    var raised = false
+    try:
+      body()
+    except PirataError:
+      raised = true
+    doAssert raised, "Expected a PirataError"
 
 proc main() =
   var world = newPirata[ComponentKind](16)
@@ -44,9 +45,10 @@ proc main() =
   world.add(first, ckPayload, Payload(text: "booty"))
   doAssert world.fetch(first, ckPayload, Payload).text == "booty"
 
-  expectPirataError(proc () =
-    discard world.fetch(first, ckVelocity, Velocity)
-  )
+  when runtimeChecksEnabled:
+    expectPirataError(proc () =
+      discard world.fetch(first, ckVelocity, Velocity)
+    )
 
   let moving = world.spawn()
   world.add(moving, ckPosition, Position(x: 5, y: 8))
@@ -69,9 +71,10 @@ proc main() =
   world.destroy(first)
   doAssert not world.contains(first)
 
-  expectPirataError(proc () =
-    discard world.fetch(first, ckPosition, Position)
-  )
+  when runtimeChecksEnabled:
+    expectPirataError(proc () =
+      discard world.fetch(first, ckPosition, Position)
+    )
 
   let recycled = world.spawn()
   doAssert recycled.idx == first.idx
@@ -81,10 +84,17 @@ proc main() =
   world.add(recycled, ckPayload, Payload(text: "fresh"))
   doAssert world.fetch(recycled, ckPayload, Payload).text == "fresh"
 
-  expectPirataError(proc () =
-    world.add(recycled, ckPosition, Position(x: 3, y: 4))
+  world.add(recycled, ckPosition, Position(x: 3, y: 4))
+
+  when runtimeChecksEnabled:
+    expectPirataError(proc () =
+      world.add(recycled, ckPosition, Position(x: 5, y: 6))
+    )
+  else:
     world.add(recycled, ckPosition, Position(x: 5, y: 6))
-  )
+    let position = world.fetch(recycled, ckPosition, Position)
+    doAssert position.x == 5
+    doAssert position.y == 6
 
 when isMainModule:
   main()

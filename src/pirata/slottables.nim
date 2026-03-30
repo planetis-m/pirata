@@ -69,8 +69,25 @@ proc initSlotTableOfCap*[T](capacity: Natural): SlotTable[T] =
 proc len*[T](x: SlotTable[T]): int {.inline.} =
   x.len
 
+proc lookupIndex*[T](x: SlotTable[T]; e: Entity): int {.inline.} =
+  let idx = e.idx
+  if idx >= x.capacity or (e.version and 1) == 0:
+    return -1
+
+  let slot = x.slotAt(idx)
+  if slot.version != e.version:
+    return -1
+
+  slot.idx
+
 proc contains*[T](x: SlotTable[T]; e: Entity): bool {.inline.} =
-  e.idx < x.capacity and x.slotAt(e.idx).version == e.version and (e.version and 1) == 1
+  x.lookupIndex(e) >= 0
+
+template valueAtIndex*[T](x: SlotTable[T]; i: int): untyped =
+  x.dataAt(i).value
+
+template valueAtSlot*[T](x: SlotTable[T]; slotIdx: int): untyped =
+  x.dataAt(x.slotAt(slotIdx).idx).value
 
 proc raiseRangeDefect() {.noinline, noreturn.} =
   raise newException(RangeDefect, "SlotTable number of elements overflow")
@@ -107,18 +124,18 @@ proc delFromSlot[T](x: var SlotTable[T]; slotIdx: int) {.inline.} =
 
   dec x.len
 
+proc delAt*[T](x: var SlotTable[T]; slotIdx: int) {.inline.} =
+  x.delFromSlot(slotIdx)
+
 proc del*[T](x: var SlotTable[T]; e: Entity) =
   if x.contains(e):
     x.delFromSlot(e.idx)
 
 template getValue(x, e) =
-  let idx = e.idx
-  if idx >= x.capacity:
+  let dataIdx = x.lookupIndex(e)
+  if dataIdx < 0:
     raise newException(KeyError, "Entity not in SlotTable")
-  template slot: untyped = x.slotAt(idx)
-  if slot.version != e.version or (e.version and 1) == 0:
-    raise newException(KeyError, "Entity not in SlotTable")
-  result = x.dataAt(slot.idx).value
+  result = x.valueAtIndex(dataIdx)
 
 proc `[]`*[T](x: SlotTable[T]; e: Entity): T =
   getValue(x, e)

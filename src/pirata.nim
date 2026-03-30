@@ -21,6 +21,8 @@ type
     registered: QueryMask[K]
     capacity: EntityImpl
 
+const runtimeChecksEnabled* = defined(pirataRuntimeChecks)
+
 template typedData[T](data: pointer): ptr UncheckedArray[T] =
   cast[ptr UncheckedArray[T]](data)
 
@@ -57,7 +59,7 @@ proc freeColumn(data: pointer) =
 
 proc clearColumnSlot[T](data: pointer; slot: int) {.raises: [].} =
   when supportsCopyMem(T):
-    typedData[T](data)[slot] = default(T)
+    zeroMem(addr typedData[T](data)[slot], sizeof(T))
   else:
     reset(typedData[T](data)[slot])
 
@@ -93,19 +95,47 @@ proc newPirata*[K: enum](maxEntities = 1024): PirataWorld[K] =
   result.signatures = initSlotTableOfCap[QueryMask[K]](maxEntities)
 
 proc contains*[K: enum](world: PirataWorld[K]; entity: Entity): bool {.inline.} =
-  world.signatures.contains(entity)
-
-proc ensureAlive[K: enum](world: PirataWorld[K]; entity: Entity) {.inline.} =
-  if not world.contains(entity):
-    fail("stale or unknown entity " & $entity)
+  world.signatures.lookupIndex(entity) >= 0
 
 proc ensureRegistered[K: enum](world: PirataWorld[K]; kind: K) {.inline.} =
   if kind notin world.registered:
     fail("component " & $kind & " is not registered")
 
+template signatureAtEntity[K: enum](world: PirataWorld[K]; entity: Entity): untyped =
+  world.signatures.valueAtSlot(entity.idx)
+
+template signatureAt[K: enum](world: PirataWorld[K]; i: int): untyped =
+  world.signatures.valueAtIndex(i)
+
 template ensureSized[T](entry: ComponentEntry; kind: typed) =
   if entry.slotSize != uint32(sizeof(T)):
     fail("component " & $kind & " was registered with a different payload size")
+
+template requireAlive[K: enum](world: PirataWorld[K]; entity: Entity) =
+  when runtimeChecksEnabled:
+    if world.signatures.lookupIndex(entity) < 0:
+      fail("stale or unknown entity " & $entity)
+
+template requireHasComponent[K: enum](signature: QueryMask[K]; entity: Entity; kind: K) =
+  when runtimeChecksEnabled:
+    if kind notin signature:
+      fail("entity " & $entity & " does not have component " & $kind)
+
+template requireMissingComponent[K: enum](signature: QueryMask[K]; entity: Entity; kind: K) =
+  when runtimeChecksEnabled:
+    if kind in signature:
+      fail("entity " & $entity & " already has component " & $kind)
+
+template requirePayloadEntry[T](entry: ComponentEntry; kind: typed) =
+  when runtimeChecksEnabled:
+    if entry.data.isNil:
+      fail("component " & $kind & " is a tag and cannot store payload data")
+    ensureSized[T](entry, kind)
+
+template requireTagEntry(entry: ComponentEntry; kind: typed) =
+  when runtimeChecksEnabled:
+    if not entry.data.isNil:
+      fail("component " & $kind & " requires payload data")
 
 proc registerComponentImpl[T; K: enum](world: var PirataWorld[K]; kind: K) =
   if kind in world.registered:
@@ -140,64 +170,66 @@ proc spawn*[K: enum](world: var PirataWorld[K]): Entity {.inline.} =
   world.signatures.incl({})
 
 proc destroy*[K: enum](world: var PirataWorld[K]; entity: Entity) =
-  world.ensureAlive(entity)
-  let signature = world.signatures[entity]
+  world.requireAlive(entity)
+  let signature = world.signatureAtEntity(entity)
   for kind in signature:
     template entry: untyped = world.registry[kind]
     if entry.data.isNil:
       continue
     entry.clearSlotOp(entry.data, entity.idx)
-  world.signatures.del(entity)
+  world.signatures.delAt(entity.idx)
 
 proc has*[K: enum](world: PirataWorld[K]; entity: Entity; kind: K): bool =
-  if not world.contains(entity):
-    return false
-  kind in world.signatures[entity]
+  when runtimeChecksEnabled:
+    let signatureIdx = world.signatures.lookupIndex(entity)
+    if signatureIdx < 0:
+      return false
+    kind in world.signatureAt(signatureIdx)
+  else:
+    kind in world.signatureAtEntity(entity)
 
 proc add*[T; K: enum](world: var PirataWorld[K]; entity: Entity; kind: K; value: sink T) =
-  world.ensureAlive(entity)
-  world.ensureRegistered(kind)
-  if kind in world.signatures[entity]:
-    fail("entity " & $entity & " already has component " & $kind)
+  world.requireAlive(entity)
+  when runtimeChecksEnabled:
+    world.ensureRegistered(kind)
+  template signature: untyped = world.signatureAtEntity(entity)
+  signature.requireMissingComponent(entity, kind)
 
   template entry: untyped = world.registry[kind]
-  if entry.data.isNil:
-    fail("component " & $kind & " is a tag and cannot store payload data")
-  ensureSized[T](entry, kind)
+  requirePayloadEntry[T](entry, kind)
   typedData[T](entry.data)[entity.idx] = value
-  world.signatures[entity].incl(kind)
+  signature.incl(kind)
 
 proc add*[K: enum](world: var PirataWorld[K]; entity: Entity; kind: K) =
-  world.ensureAlive(entity)
-  world.ensureRegistered(kind)
-  if kind in world.signatures[entity]:
-    fail("entity " & $entity & " already has component " & $kind)
-  if not world.registry[kind].data.isNil:
-    fail("component " & $kind & " requires payload data")
-  world.signatures[entity].incl(kind)
+  world.requireAlive(entity)
+  when runtimeChecksEnabled:
+    world.ensureRegistered(kind)
+  template signature: untyped = world.signatureAtEntity(entity)
+  signature.requireMissingComponent(entity, kind)
+  requireTagEntry(world.registry[kind], kind)
+  signature.incl(kind)
 
 proc fetchImpl[T; K: enum](world: var PirataWorld[K]; entity: Entity; kind: K): var T =
-  world.ensureAlive(entity)
-  world.ensureRegistered(kind)
-  if kind notin world.signatures[entity]:
-    fail("entity " & $entity & " does not have component " & $kind)
+  world.requireAlive(entity)
+  when runtimeChecksEnabled:
+    world.ensureRegistered(kind)
+    world.signatureAtEntity(entity).requireHasComponent(entity, kind)
 
   template entry: untyped = world.registry[kind]
-  if entry.data.isNil:
-    fail("component " & $kind & " is a tag and has no storage")
-  ensureSized[T](entry, kind)
+  requirePayloadEntry[T](entry, kind)
   typedData[T](entry.data)[entity.idx]
 
 proc remove*[K: enum](world: var PirataWorld[K]; entity: Entity; kind: K) =
-  world.ensureAlive(entity)
-  world.ensureRegistered(kind)
-  if kind notin world.signatures[entity]:
-    fail("entity " & $entity & " does not have component " & $kind)
+  world.requireAlive(entity)
+  when runtimeChecksEnabled:
+    world.ensureRegistered(kind)
+  template signature: untyped = world.signatureAtEntity(entity)
+  signature.requireHasComponent(entity, kind)
 
   template entry: untyped = world.registry[kind]
   if not entry.data.isNil:
     entry.clearSlotOp(entry.data, entity.idx)
-  world.signatures[entity].excl(kind)
+  signature.excl(kind)
 
 iterator query*[K: enum](
   world: PirataWorld[K],
