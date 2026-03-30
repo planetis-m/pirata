@@ -47,21 +47,12 @@ func intersects[K: enum](a, b: QueryMask[K]): bool {.inline.} =
 proc allocColumn[T](capacity: int): pointer =
   let bytes = capacity * sizeof(T)
   when supportsCopyMem(T):
-    when compileOption("threads"):
-      result = allocShared(bytes)
-    else:
-      result = alloc(bytes)
+    result = allocShared(bytes)
   else:
-    when compileOption("threads"):
-      result = allocShared0(bytes)
-    else:
-      result = alloc0(bytes)
+    result = allocShared0(bytes)
 
 proc freeColumn(data: pointer) =
-  when compileOption("threads"):
-    deallocShared(data)
-  else:
-    dealloc(data)
+  deallocShared(data)
 
 proc clearColumnSlot[T](data: pointer; slot: int) {.raises: [].} =
   when supportsCopyMem(T):
@@ -74,9 +65,7 @@ proc traceColumnSlot[T](data: pointer; slot: int; env: pointer) {.raises: [].} =
     `=trace`(typedData[T](data)[slot], env)
 
 proc freeColumnStorage(data: pointer) {.raises: [].} =
-  if data.isNil:
-    discard
-  else:
+  if not data.isNil:
     freeColumn(data)
 
 proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =

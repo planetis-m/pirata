@@ -23,21 +23,12 @@ template dataAt[T](x: SlotTable[T]; i: int): var Entry[T] =
 proc allocArray[T](count: int): ptr UncheckedArray[T] =
   let bytes = count * sizeof(T)
   when supportsCopyMem(T):
-    when compileOption("threads"):
-      result = cast[typeof(result)](allocShared(bytes))
-    else:
-      result = cast[typeof(result)](alloc(bytes))
+    result = cast[typeof(result)](allocShared(bytes))
   else:
-    when compileOption("threads"):
-      result = cast[typeof(result)](allocShared0(bytes))
-    else:
-      result = cast[typeof(result)](alloc0(bytes))
+    result = cast[typeof(result)](allocShared0(bytes))
 
 proc freeArray[T](p: ptr UncheckedArray[T]) =
-  when compileOption("threads"):
-    deallocShared(p)
-  else:
-    dealloc(p)
+  deallocShared(p)
 
 template forEachLiveIndex(x, i, body: untyped) =
   for i {.inject.} in 0..<x.len:
