@@ -22,7 +22,7 @@ type
   Treasure = object
     doubloons: int
 
-proc sail(world: var PirataWorld[ComponentKind]) =
+proc sailFleet(world: var PirataWorld[ComponentKind]) =
   for entity in world.query({ckShip, ckPosition, ckVelocity}, {ckSunk}):
     let drift = world.fetch(entity, ckVelocity, Velocity)
     world.fetch(entity, ckPosition, Position).x += drift.x
@@ -65,7 +65,7 @@ proc main() =
   echo "Before sailing:"
   fleetReport(world)
 
-  sail(world)
+  sailFleet(world)
 
   let prize = world.fetch(treasureChest, ckTreasure, Treasure).doubloons
   world.fetch(blackPearl, ckShip, Ship).rum += 5

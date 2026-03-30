@@ -51,7 +51,7 @@ proc makeHookTracker(id: int): HookTracker =
   result.token = cast[ptr int](alloc(sizeof(int)))
   result.token[] = id
 
-proc main() =
+proc verifyBasicWorldFlow() =
   var world = newPirata[ComponentKind](16)
   world.register(ckPosition, Position)
   world.register(ckVelocity, Velocity)
@@ -106,34 +106,40 @@ proc main() =
   let position = world.fetch(recycled, ckPosition, Position)
   doAssert position.x == 5
   doAssert position.y == 6
+
+proc verifyOwnedComponentCleanup() =
   destroyedTokens.setLen(0)
-  block:
-    var ownedWorld = newPirata[ComponentKind](8)
-    ownedWorld.register(ckOwned, HookTracker)
-    let kept = ownedWorld.spawn()
-    let removed = ownedWorld.spawn()
-    ownedWorld.add(kept, ckOwned, makeHookTracker(10))
-    ownedWorld.add(removed, ckOwned, makeHookTracker(20))
-    doAssert ownedWorld.fetch(kept, ckOwned, HookTracker).id == 10
-    ownedWorld.remove(kept, ckOwned)
-    ownedWorld.destroy(removed)
+  var ownedWorld = newPirata[ComponentKind](8)
+  ownedWorld.register(ckOwned, HookTracker)
+  let keptEntity = ownedWorld.spawn()
+  let removedEntity = ownedWorld.spawn()
+  ownedWorld.add(keptEntity, ckOwned, makeHookTracker(10))
+  ownedWorld.add(removedEntity, ckOwned, makeHookTracker(20))
+  doAssert ownedWorld.fetch(keptEntity, ckOwned, HookTracker).id == 10
+  ownedWorld.remove(keptEntity, ckOwned)
+  ownedWorld.destroy(removedEntity)
   doAssert destroyedTokens.len == 2
 
+proc verifyTracing() =
   traceVisits = 0
-  block:
-    var tracedWorld = newPirata[ComponentKind](8)
-    tracedWorld.register(ckTracked, TracedPayload)
-    tracedWorld.register(ckPosition, Position)
-    let firstTrace = tracedWorld.spawn()
-    let secondTrace = tracedWorld.spawn()
-    let plain = tracedWorld.spawn()
-    tracedWorld.add(firstTrace, ckTracked, TracedPayload(id: 1))
-    tracedWorld.add(secondTrace, ckTracked, TracedPayload(id: 2))
-    tracedWorld.add(plain, ckPosition, Position(x: 0, y: 0))
-    tracedWorld.remove(secondTrace, ckTracked)
-    var env: pointer = nil
-    `=trace`(tracedWorld, env)
+  var tracedWorld = newPirata[ComponentKind](8)
+  tracedWorld.register(ckTracked, TracedPayload)
+  tracedWorld.register(ckPosition, Position)
+  let firstTrackedEntity = tracedWorld.spawn()
+  let secondTrackedEntity = tracedWorld.spawn()
+  let plainEntity = tracedWorld.spawn()
+  tracedWorld.add(firstTrackedEntity, ckTracked, TracedPayload(id: 1))
+  tracedWorld.add(secondTrackedEntity, ckTracked, TracedPayload(id: 2))
+  tracedWorld.add(plainEntity, ckPosition, Position(x: 0, y: 0))
+  tracedWorld.remove(secondTrackedEntity, ckTracked)
+  var traceEnv: pointer = nil
+  `=trace`(tracedWorld, traceEnv)
   doAssert traceVisits == 1
+
+proc main() =
+  verifyBasicWorldFlow()
+  verifyOwnedComponentCleanup()
+  verifyTracing()
 
 when isMainModule:
   main()
