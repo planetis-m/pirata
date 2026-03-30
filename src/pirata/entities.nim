@@ -21,5 +21,5 @@ template toEntity*(idx, v: EntityImpl): Entity =
 
 proc `==`*(a, b: Entity): bool {.borrow.}
 
-proc `$`*(e: Entity): string =
+func `$`*(e: Entity): string {.inline.} =
   "Entity(i: " & $e.idx & ", v: " & $e.version & ")"

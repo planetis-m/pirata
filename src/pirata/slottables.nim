@@ -39,10 +39,12 @@ proc freeArray[T](p: ptr UncheckedArray[T]) =
   else:
     dealloc(p)
 
+proc `=trace`*[T](x: var SlotTable[T]; env: pointer) {.raises: [].}
+
 proc `=destroy`*[T](x: var SlotTable[T]) {.raises: [].} =
   if not x.data.isNil:
-    when not supportsCopyMem(T):
-      for i in 0 ..< x.len:
+    when not supportsCopyMem(Entry[T]):
+      for i in 0..<x.len:
         `=destroy`(x.dataAt(i))
     freeArray(x.data)
     x.data = nil
@@ -52,6 +54,12 @@ proc `=destroy`*[T](x: var SlotTable[T]) {.raises: [].} =
   x.len = 0
   x.capacity = 0
   x.freeHead = 0
+
+proc `=trace`*[T](x: var SlotTable[T]; env: pointer) {.raises: [].} =
+  when not supportsCopyMem(Entry[T]):
+    if not x.data.isNil:
+      for i in 0..<x.len:
+        `=trace`(x.dataAt(i), env)
 
 proc `=copy`*[T](dest: var SlotTable[T]; src: SlotTable[T]) {.error.}
 proc `=dup`*[T](src: SlotTable[T]): SlotTable[T] {.error.}
@@ -113,8 +121,6 @@ proc delFromSlot[T](x: var SlotTable[T]; slotIdx: int) {.inline.} =
   x.freeHead = slotIdx
 
   if valueIdx != lastIdx:
-    when not supportsCopyMem(Entry[T]):
-      `=destroy`(x.dataAt(valueIdx))
     x.dataAt(valueIdx) = move(x.dataAt(lastIdx))
     let movedSlotIdx = x.dataAt(valueIdx).e.idx
     x.slotAt(movedSlotIdx) = toEntity(valueIdx.EntityImpl, x.slotAt(movedSlotIdx).version)
@@ -137,12 +143,12 @@ template getValue(x, e) =
     raise newException(KeyError, "Entity not in SlotTable")
   result = x.valueAtIndex(dataIdx)
 
-proc `[]`*[T](x: SlotTable[T]; e: Entity): T =
+proc `[]`*[T](x: SlotTable[T]; e: Entity): lent T =
   getValue(x, e)
 
 proc `[]`*[T](x: var SlotTable[T]; e: Entity): var T =
   getValue(x, e)
 
-iterator pairs*[T](x: SlotTable[T]): Entry[T] =
-  for i in 0 ..< x.len:
+iterator pairs*[T](x: SlotTable[T]): lent Entry[T] =
+  for i in 0..<x.len:
     yield x.dataAt(i)

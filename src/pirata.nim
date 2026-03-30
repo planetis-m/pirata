@@ -3,6 +3,7 @@ import typetraits
 import ./pirata/[entities, slottables]
 
 export entities
+export slottables
 
 type
   PirataError* = object of CatchableError
@@ -12,7 +13,8 @@ type
   ComponentEntry = object
     data: pointer
     clearSlotOp: proc (data: pointer; slot: int) {.nimcall, raises: [].}
-    destroyOp: proc (data: pointer; capacity: int) {.nimcall, raises: [].}
+    traceSlotOp: proc (data: pointer; slot: int; env: pointer) {.nimcall, raises: [].}
+    freeOp: proc (data: pointer) {.nimcall, raises: [].}
     slotSize: uint32
 
   PirataWorld*[K: enum] = object
@@ -29,8 +31,7 @@ template typedData[T](data: pointer): ptr UncheckedArray[T] =
 proc fail(message: string) {.noinline, noreturn.} =
   raise newException(PirataError, message)
 
-proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
-proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
+proc `=trace`*[K](world: var PirataWorld[K]; env: pointer) {.raises: [].}
 
 func containsAll*[K: enum](mask, required: QueryMask[K]): bool {.inline.} =
   required <= mask
@@ -63,26 +64,41 @@ proc clearColumnSlot[T](data: pointer; slot: int) {.raises: [].} =
   else:
     reset(typedData[T](data)[slot])
 
-proc destroyColumn[T](data: pointer; capacity: int) {.raises: [].} =
-  if data.isNil:
-    return
+proc traceColumnSlot[T](data: pointer; slot: int; env: pointer) {.raises: [].} =
   when not supportsCopyMem(T):
-    let arr = typedData[T](data)
-    for i in 0 ..< capacity:
-      `=destroy`(arr[i])
-  freeColumn(data)
+    `=trace`(typedData[T](data)[slot], env)
+
+proc freeColumnStorage(data: pointer) {.raises: [].} =
+  if data.isNil:
+    discard
+  else:
+    freeColumn(data)
 
 proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
-  for kind in low(K) .. high(K):
-    if kind notin world.registered:
-      continue
+  for signatureEntry in world.signatures.pairs:
+    for kind in signatureEntry.value:
+      let entry = world.registry[kind]
+      if not entry.data.isNil:
+        entry.clearSlotOp(entry.data, signatureEntry.e.idx)
+  for kind in low(K)..high(K):
     let entry = world.registry[kind]
-    if entry.data.isNil:
-      continue
-    entry.destroyOp(entry.data, int(world.capacity))
-    world.registry[kind].data = nil
+    if not entry.data.isNil:
+      entry.freeOp(entry.data)
+    world.registry[kind] = default(ComponentEntry)
   world.registered = {}
+  world.capacity = 0
   `=destroy`(world.signatures)
+
+proc `=trace`*[K](world: var PirataWorld[K]; env: pointer) {.raises: [].} =
+  `=trace`(world.signatures, env)
+  for signatureEntry in world.signatures.pairs:
+    for kind in signatureEntry.value:
+      let entry = world.registry[kind]
+      if not entry.data.isNil:
+        entry.traceSlotOp(entry.data, signatureEntry.e.idx, env)
+
+proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
+proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
 
 proc newPirata*[K: enum](maxEntities = 1024): PirataWorld[K] =
   if maxEntities <= 0:
@@ -147,7 +163,8 @@ proc registerComponentImpl[T; K: enum](world: var PirataWorld[K]; kind: K) =
   world.registry[kind] = ComponentEntry(
     data: allocColumn[T](int(world.capacity)),
     clearSlotOp: clearColumnSlot[T],
-    destroyOp: destroyColumn[T],
+    traceSlotOp: traceColumnSlot[T],
+    freeOp: freeColumnStorage,
     slotSize: uint32(sizeof(T))
   )
   world.registered.incl(kind)
@@ -161,7 +178,8 @@ proc registerTag*[K: enum](world: var PirataWorld[K]; kind: K) =
   world.registry[kind] = ComponentEntry(
     data: nil,
     clearSlotOp: nil,
-    destroyOp: nil,
+    traceSlotOp: nil,
+    freeOp: nil,
     slotSize: 0
   )
   world.registered.incl(kind)
@@ -173,10 +191,9 @@ proc destroy*[K: enum](world: var PirataWorld[K]; entity: Entity) =
   world.requireAlive(entity)
   let signature = world.signatureAtEntity(entity)
   for kind in signature:
-    template entry: untyped = world.registry[kind]
-    if entry.data.isNil:
-      continue
-    entry.clearSlotOp(entry.data, entity.idx)
+    let entry = world.registry[kind]
+    if not entry.data.isNil:
+      entry.clearSlotOp(entry.data, entity.idx)
   world.signatures.delAt(entity.idx)
 
 proc has*[K: enum](world: PirataWorld[K]; entity: Entity; kind: K): bool =

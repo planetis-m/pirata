@@ -8,6 +8,8 @@ type
     ckVelocity
     ckTag
     ckPayload
+    ckOwned
+    ckTracked
 
   Position = object
     x, y: float32
@@ -17,6 +19,37 @@ type
 
   Payload = object
     text: string
+
+  HookTracker = object
+    id: int
+    token: ptr int
+
+  TracedPayload = object
+    id: int
+
+var destroyedTokens: seq[uint] = @[]
+var traceVisits = 0
+
+proc `=destroy`(x: HookTracker) =
+  if x.token != nil:
+    let tokenId = cast[uint](x.token)
+    for seen in destroyedTokens:
+      doAssert seen != tokenId, "HookTracker destroyed twice"
+    destroyedTokens.add(tokenId)
+    dealloc(x.token)
+
+proc `=wasMoved`(x: var HookTracker) =
+  x.token = nil
+
+proc `=copy`(dest: var HookTracker; src: HookTracker) {.error.}
+
+proc `=trace`(x: var TracedPayload; env: pointer) =
+  inc traceVisits
+
+proc makeHookTracker(id: int): HookTracker =
+  result = HookTracker(id: id, token: nil)
+  result.token = cast[ptr int](alloc(sizeof(int)))
+  result.token[] = id
 
 when runtimeChecksEnabled:
   proc expectPirataError(body: proc ()) =
@@ -33,6 +66,8 @@ proc main() =
   world.register(ckVelocity, Velocity)
   world.registerTag(ckTag)
   world.register(ckPayload, Payload)
+  world.register(ckOwned, HookTracker)
+  world.register(ckTracked, TracedPayload)
 
   let first = world.spawn()
   doAssert world.contains(first)
@@ -95,6 +130,48 @@ proc main() =
     let position = world.fetch(recycled, ckPosition, Position)
     doAssert position.x == 5
     doAssert position.y == 6
+
+  destroyedTokens.setLen(0)
+  block:
+    var table = initSlotTableOfCap[HookTracker](4)
+    let firstTracked = table.incl(makeHookTracker(1))
+    let secondTracked = table.incl(makeHookTracker(2))
+    let thirdTracked = table.incl(makeHookTracker(3))
+    table.del(firstTracked)
+    doAssert table.contains(secondTracked)
+    doAssert table.contains(thirdTracked)
+    doAssert table[secondTracked].id == 2
+    doAssert table[thirdTracked].id == 3
+  doAssert destroyedTokens.len == 3
+
+  destroyedTokens.setLen(0)
+  block:
+    var ownedWorld = newPirata[ComponentKind](8)
+    ownedWorld.register(ckOwned, HookTracker)
+    let kept = ownedWorld.spawn()
+    let removed = ownedWorld.spawn()
+    ownedWorld.add(kept, ckOwned, makeHookTracker(10))
+    ownedWorld.add(removed, ckOwned, makeHookTracker(20))
+    doAssert ownedWorld.fetch(kept, ckOwned, HookTracker).id == 10
+    ownedWorld.remove(kept, ckOwned)
+    ownedWorld.destroy(removed)
+  doAssert destroyedTokens.len == 2
+
+  traceVisits = 0
+  block:
+    var tracedWorld = newPirata[ComponentKind](8)
+    tracedWorld.register(ckTracked, TracedPayload)
+    tracedWorld.register(ckPosition, Position)
+    let firstTrace = tracedWorld.spawn()
+    let secondTrace = tracedWorld.spawn()
+    let plain = tracedWorld.spawn()
+    tracedWorld.add(firstTrace, ckTracked, TracedPayload(id: 1))
+    tracedWorld.add(secondTrace, ckTracked, TracedPayload(id: 2))
+    tracedWorld.add(plain, ckPosition, Position(x: 0, y: 0))
+    tracedWorld.remove(secondTrace, ckTracked)
+    var env: pointer = nil
+    `=trace`(tracedWorld, env)
+  doAssert traceVisits == 1
 
 when isMainModule:
   main()
