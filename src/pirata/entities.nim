@@ -8,7 +8,6 @@ const
   indexBits = sizeof(EntityImpl) * 8 - versionBits
   indexMask = (EntityImpl(1) shl indexBits) - 1
   maxEntities* = 8191
-  invalidId* = Entity(maxEntities.EntityImpl)
 
 template idx*(e: Entity): int =
   int(e.EntityImpl and indexMask)

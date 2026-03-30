@@ -78,9 +78,6 @@ proc initSlotTableOfCap*[T](capacity: Natural): SlotTable[T] =
     let next = if i + 1 < result.capacity: i + 1 else: result.capacity
     result.slotAt(i) = toEntity(next.EntityImpl, 0)
 
-proc len*[T](x: SlotTable[T]): int {.inline.} =
-  x.len
-
 proc lookupIndex*[T](x: SlotTable[T]; e: Entity): int {.inline.} =
   let idx = e.idx
   if idx >= x.capacity or (e.version and 1) == 0:

@@ -51,15 +51,6 @@ proc makeHookTracker(id: int): HookTracker =
   result.token = cast[ptr int](alloc(sizeof(int)))
   result.token[] = id
 
-when runtimeChecksEnabled:
-  proc expectPirataError(body: proc ()) =
-    var raised = false
-    try:
-      body()
-    except PirataError:
-      raised = true
-    doAssert raised, "Expected a PirataError"
-
 proc main() =
   var world = newPirata[ComponentKind](16)
   world.register(ckPosition, Position)
@@ -79,11 +70,6 @@ proc main() =
 
   world.add(first, ckPayload, Payload(text: "booty"))
   doAssert world.fetch(first, ckPayload, Payload).text == "booty"
-
-  when runtimeChecksEnabled:
-    expectPirataError(proc () =
-      discard world.fetch(first, ckVelocity, Velocity)
-    )
 
   let moving = world.spawn()
   world.add(moving, ckPosition, Position(x: 5, y: 8))
@@ -106,11 +92,6 @@ proc main() =
   world.destroy(first)
   doAssert not world.contains(first)
 
-  when runtimeChecksEnabled:
-    expectPirataError(proc () =
-      discard world.fetch(first, ckPosition, Position)
-    )
-
   let recycled = world.spawn()
   doAssert recycled.idx == first.idx
   doAssert recycled.version != first.version
@@ -121,15 +102,10 @@ proc main() =
 
   world.add(recycled, ckPosition, Position(x: 3, y: 4))
 
-  when runtimeChecksEnabled:
-    expectPirataError(proc () =
-      world.add(recycled, ckPosition, Position(x: 5, y: 6))
-    )
-  else:
-    world.add(recycled, ckPosition, Position(x: 5, y: 6))
-    let position = world.fetch(recycled, ckPosition, Position)
-    doAssert position.x == 5
-    doAssert position.y == 6
+  world.add(recycled, ckPosition, Position(x: 5, y: 6))
+  let position = world.fetch(recycled, ckPosition, Position)
+  doAssert position.x == 5
+  doAssert position.y == 6
 
   destroyedTokens.setLen(0)
   block:

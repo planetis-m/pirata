@@ -224,15 +224,9 @@ That pattern scales well because it stays obvious:
 - The component enum defines the world layout, so keep it deliberate and compact.
 - `pirata` is built around slot-indexed columns and flat queries.
 
-## Runtime Checks
+## Runtime Contract
 
-`pirata` now assumes the world layout is finalized up front and that hot-path entity/component usage is valid. The default API does not re-validate every entity handle and component access on each `add`, `fetch`, `remove`, `has`, or `destroy` call.
-
-If you want the old defensive behavior while debugging, compile with:
-
-```bash
-nim c -d:pirataRuntimeChecks -r your_game.nim
-```
+`pirata` assumes the world layout is finalized up front and that hot-path entity/component usage is valid. It does not re-validate every entity handle and component access on each `add`, `fetch`, `remove`, `has`, or `destroy` call.
 
 ## Run The Demo And Tests
 
@@ -246,12 +240,6 @@ Run the test module:
 
 ```bash
 nim c -r libs/pirata/tests/test_pirata.nim
-```
-
-Run the test module with runtime checks enabled:
-
-```bash
-nim c -d:pirataRuntimeChecks -r libs/pirata/tests/test_pirata.nim
 ```
 
 Run the micro-benchmarks:
