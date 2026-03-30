@@ -17,7 +17,7 @@ type
     signatures: SlotTable[QueryMask[K]]
     registry: array[K, Column]
     registered: QueryMask[K]
-    capacity: EntityImpl
+    capacity: EntityBits
 
 template asArray[T](data: pointer): ptr UncheckedArray[T] =
   cast[ptr UncheckedArray[T]](data)
@@ -84,7 +84,7 @@ proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
 
 proc newPirata*[K: enum](maxEntities = 1024): PirataWorld[K] =
   result = default(PirataWorld[K])
-  result.capacity = EntityImpl(maxEntities)
+  result.capacity = EntityBits(maxEntities)
   result.signatures = initSlotTableOfCap[QueryMask[K]](maxEntities)
 
 proc contains*[K: enum](world: PirataWorld[K]; entity: Entity): bool {.inline.} =

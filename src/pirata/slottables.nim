@@ -44,7 +44,7 @@ proc `=destroy`*[T](table: var SlotTable[T]) {.raises: [].} =
     table.slots = nil
   table.len = 0
   table.capacity = 0
-  table.freeHead = 0
+  table.freeHead = invalidIdx
 
 proc `=trace`*[T](table: var SlotTable[T]; env: pointer) {.raises: [].} =
   when not supportsCopyMem(Entry[T]):
@@ -62,8 +62,8 @@ proc initSlotTableOfCap*[T](capacity: Natural): SlotTable[T] =
   result.slots = allocBuf[Entity](result.capacity)
   result.data = allocBuf[Entry[T]](result.capacity)
   for idx in 0..<result.capacity:
-    let next = if idx + 1 < result.capacity: idx + 1 else: result.capacity
-    result.slotRef(idx) = toEntity(next.EntityImpl, 0)
+    let next = if idx + 1 < result.capacity: idx + 1 else: invalidIdx
+    result.slotRef(idx) = toEntity(EntityBits(next), 0)
 
 proc lookupIndex*[T](table: SlotTable[T]; entity: Entity): int {.inline.} =
   let idx = entity.idx
@@ -89,24 +89,24 @@ proc incl*[T](table: var SlotTable[T]; value: sink T): Entity =
   let slotIdx = table.freeHead
   template slot: untyped = table.slotRef(slotIdx)
   let liveVersion = slot.version or 1
-  result = toEntity(slotIdx.EntityImpl, liveVersion)
+  result = toEntity(EntityBits(slotIdx), liveVersion)
   table.freeHead = slot.idx
   table.entryRef(table.len) = Entry[T](e: result, value: value)
-  slot = toEntity(table.len.EntityImpl, liveVersion)
+  slot = toEntity(EntityBits(table.len), liveVersion)
   inc table.len
 
 proc removeSlot[T](table: var SlotTable[T]; slotIdx: int) {.inline.} =
   template slot: untyped = table.slotRef(slotIdx)
   let valueIdx = slot.idx
   let lastIdx = table.len - 1
-  slot = toEntity(table.freeHead.EntityImpl, slot.version + 1)
+  slot = toEntity(EntityBits(table.freeHead), slot.version + 1)
   table.freeHead = slotIdx
 
   if valueIdx != lastIdx:
     table.entryRef(valueIdx) = move(table.entryRef(lastIdx))
     let movedSlotIdx = table.entryRef(valueIdx).e.idx
     table.slotRef(movedSlotIdx) =
-      toEntity(valueIdx.EntityImpl, table.slotRef(movedSlotIdx).version)
+      toEntity(EntityBits(valueIdx), table.slotRef(movedSlotIdx).version)
   else:
     when not supportsCopyMem(Entry[T]):
       `=destroy`(table.entryRef(lastIdx))

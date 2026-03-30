@@ -1,21 +1,22 @@
 type
-  Entity* = distinct EntityImpl
-  EntityImpl* = uint16
+  EntityBits* = uint32
+  Entity* = distinct EntityBits
 
 const
   versionBits = 3
-  versionMask = (EntityImpl(1) shl versionBits) - 1
-  indexBits = sizeof(EntityImpl) * 8 - versionBits
-  indexMask = (EntityImpl(1) shl indexBits) - 1
-  maxEntities* = 8191
+  versionMask = (EntityBits(1) shl versionBits) - 1
+  indexBits = sizeof(EntityBits) * 8 - versionBits
+  indexMask = (EntityBits(1) shl indexBits) - 1
+  invalidIdx* = int(indexMask)
+  maxEntities* = int(indexMask)
 
-func idx*(entity: Entity): int {.inline.} =
-  int(EntityImpl(entity) and indexMask)
+template idx*(entity: Entity): int =
+  int(EntityBits(entity) and indexMask)
 
-func version*(entity: Entity): EntityImpl {.inline.} =
-  EntityImpl(entity) shr indexBits
+template version*(entity: Entity): EntityBits =
+  EntityBits(entity) shr indexBits
 
-func toEntity*(idx, ver: EntityImpl): Entity {.inline.} =
+template toEntity*(idx, ver: EntityBits): Entity =
   Entity(((ver and versionMask) shl indexBits) or (idx and indexMask))
 
 proc `==`*(a, b: Entity): bool {.borrow.}
