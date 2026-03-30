@@ -31,6 +31,14 @@ template typedData[T](data: pointer): ptr UncheckedArray[T] =
 proc fail(message: string) {.noinline, noreturn.} =
   raise newException(PirataError, message)
 
+template forEachLivePayload(world, entity, kind, entry, body: untyped) =
+  for signatureEntry in world.signatures.pairs:
+    let entity {.inject.} = signatureEntry.e
+    for kind in signatureEntry.value:
+      let entry {.inject.} = world.registry[kind]
+      if not entry.data.isNil:
+        body
+
 proc `=trace`*[K](world: var PirataWorld[K]; env: pointer) {.raises: [].}
 
 func containsAll*[K: enum](mask, required: QueryMask[K]): bool {.inline.} =
@@ -75,11 +83,8 @@ proc freeColumnStorage(data: pointer) {.raises: [].} =
     freeColumn(data)
 
 proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
-  for signatureEntry in world.signatures.pairs:
-    for kind in signatureEntry.value:
-      let entry = world.registry[kind]
-      if not entry.data.isNil:
-        entry.clearSlotOp(entry.data, signatureEntry.e.idx)
+  forEachLivePayload(world, entity, kind, entry):
+    entry.clearSlotOp(entry.data, entity.idx)
   for kind in low(K)..high(K):
     let entry = world.registry[kind]
     if not entry.data.isNil:
@@ -91,11 +96,8 @@ proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
 
 proc `=trace`*[K](world: var PirataWorld[K]; env: pointer) {.raises: [].} =
   `=trace`(world.signatures, env)
-  for signatureEntry in world.signatures.pairs:
-    for kind in signatureEntry.value:
-      let entry = world.registry[kind]
-      if not entry.data.isNil:
-        entry.traceSlotOp(entry.data, signatureEntry.e.idx, env)
+  forEachLivePayload(world, entity, kind, entry):
+    entry.traceSlotOp(entry.data, entity.idx, env)
 
 proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
 proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}

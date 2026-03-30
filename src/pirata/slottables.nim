@@ -39,12 +39,16 @@ proc freeArray[T](p: ptr UncheckedArray[T]) =
   else:
     dealloc(p)
 
+template forEachLiveIndex(x, i, body: untyped) =
+  for i {.inject.} in 0..<x.len:
+    body
+
 proc `=trace`*[T](x: var SlotTable[T]; env: pointer) {.raises: [].}
 
 proc `=destroy`*[T](x: var SlotTable[T]) {.raises: [].} =
   if not x.data.isNil:
     when not supportsCopyMem(Entry[T]):
-      for i in 0..<x.len:
+      forEachLiveIndex(x, i):
         `=destroy`(x.dataAt(i))
     freeArray(x.data)
     x.data = nil
@@ -58,7 +62,7 @@ proc `=destroy`*[T](x: var SlotTable[T]) {.raises: [].} =
 proc `=trace`*[T](x: var SlotTable[T]; env: pointer) {.raises: [].} =
   when not supportsCopyMem(Entry[T]):
     if not x.data.isNil:
-      for i in 0..<x.len:
+      forEachLiveIndex(x, i):
         `=trace`(x.dataAt(i), env)
 
 proc `=copy`*[T](dest: var SlotTable[T]; src: SlotTable[T]) {.error.}
