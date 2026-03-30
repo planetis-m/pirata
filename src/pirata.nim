@@ -5,8 +5,6 @@ import ./pirata/[entities, slottables]
 export entities
 
 type
-  PirataError* = object of CatchableError
-
   QueryMask*[K: enum] = set[K]
 
   ComponentEntry = object
@@ -24,9 +22,6 @@ type
 
 template typedData[T](data: pointer): ptr UncheckedArray[T] =
   cast[ptr UncheckedArray[T]](data)
-
-proc fail(message: string) {.noinline, noreturn.} =
-  raise newException(PirataError, message)
 
 template forEachLivePayload(world, entity, kind, entry, body: untyped) =
   for signatureEntry in world.signatures.pairs:
@@ -89,11 +84,6 @@ proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
 proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
 
 proc newPirata*[K: enum](maxEntities = 1024): PirataWorld[K] =
-  if maxEntities <= 0:
-    fail("maxEntities must be greater than zero")
-  if maxEntities > entities.maxEntities:
-    fail("maxEntities must be <= " & $entities.maxEntities)
-
   result = default(PirataWorld[K])
   result.capacity = EntityImpl(maxEntities)
   result.signatures = initSlotTableOfCap[QueryMask[K]](maxEntities)
@@ -104,17 +94,7 @@ proc contains*[K: enum](world: PirataWorld[K]; entity: Entity): bool {.inline.} 
 template signatureAtEntity[K: enum](world: PirataWorld[K]; entity: Entity): untyped =
   world.signatures.valueAtSlot(entity.idx)
 
-template ensureSized[T](entry: ComponentEntry; kind: typed) =
-  if entry.slotSize != uint32(sizeof(T)):
-    fail("component " & $kind & " was registered with a different payload size")
-
 proc registerComponentImpl[T; K: enum](world: var PirataWorld[K]; kind: K) =
-  if kind in world.registered:
-    if world.registry[kind].data.isNil:
-      fail("component " & $kind & " was already registered as a tag")
-    ensureSized[T](world.registry[kind], kind)
-    return
-
   world.registry[kind] = ComponentEntry(
     data: allocColumn[T](int(world.capacity)),
     clearSlotOp: clearColumnSlot[T],
@@ -125,11 +105,6 @@ proc registerComponentImpl[T; K: enum](world: var PirataWorld[K]; kind: K) =
   world.registered.incl(kind)
 
 proc registerTag*[K: enum](world: var PirataWorld[K]; kind: K) =
-  if kind in world.registered:
-    if not world.registry[kind].data.isNil:
-      fail("component " & $kind & " already has payload storage")
-    return
-
   world.registry[kind] = ComponentEntry(
     data: nil,
     clearSlotOp: nil,

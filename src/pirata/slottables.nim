@@ -89,13 +89,7 @@ template valueAtIndex*[T](x: SlotTable[T]; i: int): untyped =
 template valueAtSlot*[T](x: SlotTable[T]; slotIdx: int): untyped =
   x.dataAt(x.slotAt(slotIdx).idx).value
 
-proc raiseRangeDefect() {.noinline, noreturn.} =
-  raise newException(RangeDefect, "SlotTable number of elements overflow")
-
 proc incl*[T](x: var SlotTable[T]; value: sink T): Entity =
-  if x.len >= x.capacity:
-    raiseRangeDefect()
-
   let slotIdx = x.freeHead
   template slot: untyped = x.slotAt(slotIdx)
   let occupiedVersion = slot.version or 1
@@ -130,10 +124,7 @@ proc del*[T](x: var SlotTable[T]; e: Entity) =
     x.delFromSlot(e.idx)
 
 template getValue(x, e) =
-  let dataIdx = x.lookupIndex(e)
-  if dataIdx < 0:
-    raise newException(KeyError, "Entity not in SlotTable")
-  result = x.valueAtIndex(dataIdx)
+  result = x.valueAtSlot(e.idx)
 
 proc `[]`*[T](x: SlotTable[T]; e: Entity): lent T =
   getValue(x, e)
