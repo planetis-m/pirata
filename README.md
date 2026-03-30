@@ -114,13 +114,15 @@ type
   Treasure = object
     doubloons: int
 
-proc sail(world: var PirataWorld[ComponentKind]) =
+  World = PirataWorld[ComponentKind]
+
+proc sail(world: var World) =
   for entity in world.query({ckShip, ckPosition, ckVelocity}, {ckSunk}):
     let drift = world.fetch(entity, ckVelocity, Velocity)
     world.fetch(entity, ckPosition, Position).x += drift.x
     world.fetch(entity, ckPosition, Position).y += drift.y
 
-proc fleetReport(world: var PirataWorld[ComponentKind]) =
+proc fleetReport(world: var World) =
   echo "Fleet report:"
   for entity in world.query({ckShip, ckPosition}, {ckSunk}):
     let ship = world.fetch(entity, ckShip, Ship)
@@ -221,9 +223,9 @@ That pattern scales well because it stays obvious:
 
 ## Limits
 
-- `maxEntities` must stay within the current entity-id limit of `8191`.
-- The component enum defines the world layout, so keep it deliberate and compact.
-- `pirata` is built around slot-indexed columns and flat queries.
+- `maxEntities` is a real upfront capacity. Each registered payload component allocates storage for that many entities, so large worlds scale memory use linearly across columns.
+- The component enum defines the world layout up front. Adding a new component kind means changing the enum and registering new storage explicitly.
+- Queries are flat signature scans, not archetype-indexed lookups. That keeps the implementation small and predictable, but broad queries still scale with world size.
 
 ## Runtime Contract
 

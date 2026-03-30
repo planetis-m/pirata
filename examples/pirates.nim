@@ -22,13 +22,26 @@ type
   Treasure = object
     doubloons: int
 
-proc sailFleet(world: var PirataWorld[ComponentKind]) =
-  for entity in world.query({ckShip, ckPosition, ckVelocity}, {ckSunk}):
-    let drift = world.fetch(entity, ckVelocity, Velocity)
-    world.fetch(entity, ckPosition, Position).x += drift.x
-    world.fetch(entity, ckPosition, Position).y += drift.y
+  World = PirataWorld[ComponentKind]
 
-proc fleetReport(world: var PirataWorld[ComponentKind]) =
+template comps[A, B](
+  world: var World,
+  entity: Entity,
+  kindA: ComponentKind, valueA: untyped, typeA: typedesc[A],
+  kindB: ComponentKind, valueB: untyped, typeB: typedesc[B],
+  body: untyped
+) =
+  var valueA {.inject.} = addr(world.fetch(entity, kindA, typeA))
+  var valueB {.inject.} = addr(world.fetch(entity, kindB, typeB))
+  body
+
+proc sailFleet(world: var World) =
+  for entity in world.query({ckShip, ckPosition, ckVelocity}, {ckSunk}):
+    world.comps(entity, ckPosition, position, Position, ckVelocity, velocity, Velocity):
+      position.x += velocity.x
+      position.y += velocity.y
+
+proc fleetReport(world: var World) =
   echo "Fleet report:"
   for entity in world.query({ckShip, ckPosition}, {ckSunk}):
     let ship = world.fetch(entity, ckShip, Ship)

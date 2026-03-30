@@ -44,13 +44,15 @@ proc `=copy`*[T](dest: var SlotTable[T]; src: SlotTable[T]) {.error.}
 proc `=dup`*[T](src: SlotTable[T]): SlotTable[T] {.error.}
 
 proc initSlotTableOfCap*[T](capacity: Natural): SlotTable[T] =
-  result = default(SlotTable[T])
-  result.capacity = capacity.int
-  result.freeHead = 0
-  result.slots = allocBuf[Entity](result.capacity)
-  result.data = allocBuf[Entry[T]](result.capacity)
-  for idx in 0..<result.capacity:
-    let next = if idx + 1 < result.capacity: idx + 1 else: invalidIdx
+  let cap = capacity.int
+  result = SlotTable[T](
+    capacity: cap,
+    freeHead: 0,
+    slots: allocBuf[Entity](cap),
+    data: allocBuf[Entry[T]](cap)
+  )
+  for idx in 0..<cap:
+    let next = if idx + 1 < cap: idx + 1 else: invalidIdx
     result.slotRef(idx) = toEntity(EntityBits(next), 0)
 
 proc lookupIndex*[T](table: SlotTable[T]; entity: Entity): int {.inline.} =
