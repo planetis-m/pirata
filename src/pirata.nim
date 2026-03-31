@@ -10,7 +10,6 @@ type
   Column = object
     data: pointer
     destroySlots: proc (data: pointer; capacity: int) {.nimcall, raises: [].}
-    freeData: proc (data: pointer) {.nimcall, raises: [].}
 
   PirataWorld*[K: enum] = object
     signatures: SlotTable[QueryMask[K]]
@@ -38,17 +37,13 @@ proc destroyColumnSlots[T](data: pointer; capacity: int) {.raises: [].} =
     for slot in 0..<capacity:
       `=destroy`(asArray[T](data)[slot])
 
-proc freeColumnData(data: pointer) {.raises: [].} =
-  deallocShared(data)
-
 proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
   for kind in low(K)..high(K):
     let col = world.registry[kind]
     if not col.data.isNil:
       if col.destroySlots != nil:
         col.destroySlots(col.data, int(world.capacity))
-      if col.freeData != nil:
-        col.freeData(col.data)
+      deallocShared(col.data)
   `=destroy`(world.signatures)
 
 proc `=wasMoved`*[K](world: var PirataWorld[K]) {.raises: [].} =
@@ -74,15 +69,13 @@ template signature[K: enum](world: PirataWorld[K]; entity: Entity): untyped =
 proc registerComponent[T; K: enum](world: var PirataWorld[K]; kind: K) =
   world.registry[kind] = Column(
     data: allocColumn[T](int(world.capacity)),
-    destroySlots: when supportsCopyMem(T): nil else: destroyColumnSlots[T],
-    freeData: freeColumnData
+    destroySlots: when supportsCopyMem(T): nil else: destroyColumnSlots[T]
   )
 
 proc registerTag*[K: enum](world: var PirataWorld[K]; kind: K) =
   world.registry[kind] = Column(
     data: nil,
-    destroySlots: nil,
-    freeData: nil
+    destroySlots: nil
   )
 
 proc spawn*[K: enum](world: var PirataWorld[K]): Entity {.inline.} =
