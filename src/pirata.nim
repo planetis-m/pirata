@@ -48,9 +48,8 @@ proc `=destroy`*[K](world: var PirataWorld[K]) =
 
 proc `=wasMoved`*[K](world: var PirataWorld[K]) =
   `=wasMoved`(world.signatures)
-  world.capacity = 0
   for kind in low(K)..high(K):
-    world.registry[kind] = default(Column)
+    world.registry[kind].data = nil
 
 proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
 proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
