@@ -89,17 +89,22 @@ proc runBench(
   )
 
 proc benchSlotTableLookup(): tuple[ops: int64, checksum: int64] =
-  var table = initSlotTableOfCap[int32](SlotCapacity)
+  var table = initSlotTableOfCap[ComponentKind](SlotCapacity)
   var entities = newSeq[Entity](SlotCapacity)
 
   for i in 0 ..< SlotCapacity:
-    entities[i] = table.incl(int32(i))
+    let mask =
+      if (i and 1) == 0:
+        {ckPosition, ckVelocity}
+      else:
+        {ckHealth, ckMarker}
+    entities[i] = table.incl(mask)
 
   var sum = 0'i64
   for _ in 0 ..< 256:
     for e in entities:
       if table.contains(e):
-        sum += int64(table[e])
+        sum += int64(card(table[e]))
 
   consume(sum)
   (ops: int64(SlotCapacity) * 256, checksum: sum)

@@ -12,7 +12,7 @@ type
     destroySlots: proc (data: pointer; capacity: int) {.nimcall, raises: [].}
 
   PirataWorld*[K: enum] = object
-    signatures: SlotTable[QueryMask[K]]
+    signatures: SlotTable[K]
     registry: array[K, Column]
     capacity: EntityBits
 
@@ -48,14 +48,9 @@ proc `=destroy`*[K](world: var PirataWorld[K]) =
 
 proc `=wasMoved`*[K](world: var PirataWorld[K]) =
   `=wasMoved`(world.signatures)
+  world.capacity = 0
   for kind in low(K)..high(K):
-    world.registry[kind].data = nil
-
-proc `=sink`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) =
-  `=destroy`(dest)
-  `=sink`(dest.signatures, src.signatures)
-  dest.registry = src.registry
-  dest.capacity = src.capacity
+    world.registry[kind] = default(Column)
 
 proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
 proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
@@ -63,7 +58,7 @@ proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
 proc newPirata*[K: enum](maxEntities = 1024): PirataWorld[K] =
   result = PirataWorld[K](
     capacity: EntityBits(maxEntities),
-    signatures: initSlotTableOfCap[QueryMask[K]](maxEntities)
+    signatures: initSlotTableOfCap[K](maxEntities)
   )
 
 proc contains*[K: enum](world: PirataWorld[K]; entity: Entity): bool {.inline.} =

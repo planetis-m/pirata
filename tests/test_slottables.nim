@@ -1,98 +1,62 @@
-import algorithm
-
-import ../src/pirata/slottables
+import ../src/pirata/[entities, slottables]
 
 type
-  HookTracker = object
-    id: int
-    token: ptr int
+  ComponentKind = enum
+    ckPosition
+    ckVelocity
+    ckSleeping
 
-var destroyedTokens: seq[uint] = @[]
+proc verifyBasicFlow() =
+  var table = initSlotTableOfCap[ComponentKind](4)
+  let first = table.incl({ckPosition})
+  let second = table.incl({ckVelocity})
+  let third = table.incl({ckPosition, ckSleeping})
 
-proc `=destroy`(x: HookTracker) =
-  if x.token != nil:
-    let tokenId = cast[uint](x.token)
-    for seen in destroyedTokens:
-      doAssert seen != tokenId, "HookTracker destroyed twice"
-    destroyedTokens.add(tokenId)
-    dealloc(x.token)
+  doAssert table.contains(first)
+  doAssert table.contains(second)
+  doAssert table.contains(third)
+  doAssert table[first] == {ckPosition}
+  doAssert table[third] == {ckPosition, ckSleeping}
 
-proc `=wasMoved`(x: var HookTracker) =
-  x.token = nil
+  table.del(second)
+  doAssert table.contains(first)
+  doAssert not table.contains(second)
+  doAssert table.contains(third)
+  doAssert table[third] == {ckPosition, ckSleeping}
 
-proc `=copy`(dest: var HookTracker; src: HookTracker) {.error.}
+  let recycled = table.incl({ckSleeping})
+  doAssert recycled.idx == second.idx
+  doAssert recycled.version != second.version
+  doAssert table[recycled] == {ckSleeping}
 
-proc makeHookTracker(id: int): HookTracker =
-  result = HookTracker(id: id, token: nil)
-  result.token = cast[ptr int](alloc(sizeof(int)))
-  result.token[] = id
-
-proc verifyMoveDoesNotDoubleDestroy() =
-  destroyedTokens.setLen(0)
+proc verifyMoveDoesNotLoseEntries() =
   block:
-    var table = initSlotTableOfCap[HookTracker](4)
-    let tracked = table.incl(makeHookTracker(1))
+    var table = initSlotTableOfCap[ComponentKind](4)
+    let tracked = table.incl({ckPosition, ckVelocity})
     var movedTable = move(table)
     doAssert movedTable.contains(tracked)
-    doAssert movedTable[tracked].id == 1
-  doAssert destroyedTokens.len == 1
+    doAssert movedTable[tracked] == {ckPosition, ckVelocity}
 
-proc makeStringTable(): SlotTable[string] =
-  result = initSlotTableOfCap[string](4)
-  discard result.incl("booty")
-  discard result.incl("rum")
+proc verifyIteration() =
+  var table = initSlotTableOfCap[ComponentKind](4)
+  discard table.incl({ckPosition})
+  discard table.incl({ckVelocity})
+  discard table.incl({ckPosition, ckSleeping})
 
-proc verifyCopyProducesIndependentTable() =
-  var original = makeStringTable()
-  let first = original.incl("gold")
-  let second = original.incl("maps")
-  var copied = original
+  var count = 0
+  var sawSleeping = false
+  for entry in table.pairs:
+    inc count
+    if ckSleeping in entry.value:
+      sawSleeping = true
 
-  original.del(first)
-  doAssert not original.contains(first)
-  doAssert copied.contains(first)
-  doAssert copied[first] == "gold"
-  doAssert copied[second] == "maps"
-
-proc verifyDupProducesIndependentTable() =
-  var original = makeStringTable()
-  let first = original.incl("parrot")
-  var duplicated = `=dup`(original)
-
-  original.del(first)
-  doAssert not original.contains(first)
-  doAssert duplicated.contains(first)
-  doAssert duplicated[first] == "parrot"
-
-proc verifySinkReplacesOwnedStorage() =
-  var sinked = initSlotTableOfCap[string](2)
-  discard sinked.incl("stale")
-  sinked = makeStringTable()
-
-  var values: seq[string] = @[]
-  for entry in sinked.pairs:
-    values.add(entry.value)
-  values.sort()
-  doAssert values == @["booty", "rum"]
+  doAssert count == 3
+  doAssert sawSleeping
 
 proc main() =
-  destroyedTokens.setLen(0)
-  block:
-    var table = initSlotTableOfCap[HookTracker](4)
-    let firstTracked = table.incl(makeHookTracker(1))
-    let secondTracked = table.incl(makeHookTracker(2))
-    let thirdTracked = table.incl(makeHookTracker(3))
-    table.del(firstTracked)
-    doAssert destroyedTokens.len == 1
-    doAssert table.contains(secondTracked)
-    doAssert table.contains(thirdTracked)
-    doAssert table[secondTracked].id == 2
-    doAssert table[thirdTracked].id == 3
-  doAssert destroyedTokens.len == 3
-  verifyCopyProducesIndependentTable()
-  verifyDupProducesIndependentTable()
-  verifySinkReplacesOwnedStorage()
-  verifyMoveDoesNotDoubleDestroy()
+  verifyBasicFlow()
+  verifyMoveDoesNotLoseEntries()
+  verifyIteration()
 
 when isMainModule:
   main()
