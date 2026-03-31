@@ -51,6 +51,11 @@ proc initWorld(capacity = 16): PirataWorld[ComponentKind] =
   result.register(ckPayload, Payload)
   result.register(ckOwned, HookTracker)
 
+proc makeOwnedWorld(id: int): PirataWorld[ComponentKind] =
+  result = initWorld(4)
+  let entity = result.spawn()
+  result.add(entity, ckOwned, makeHookTracker(id))
+
 proc verifyBasicWorldFlow() =
   var world = initWorld()
 
@@ -151,11 +156,25 @@ proc verifyWorldMoveDoesNotDoubleDestroy() =
     doAssert movedWorld.fetch(entity, ckOwned, HookTracker).id == 1
   doAssert destroyedTokens.len == 1
 
+proc verifyWorldSinkAssignment() =
+  destroyedTokens.setLen(0)
+  block:
+    var world = makeOwnedWorld(1)
+    world = makeOwnedWorld(2)
+    doAssert destroyedTokens.len == 1
+
+    var ownedIds: seq[int] = @[]
+    for entity in world.query({ckOwned}):
+      ownedIds.add(world.fetch(entity, ckOwned, HookTracker).id)
+    doAssert ownedIds == @[2]
+  doAssert destroyedTokens.len == 2
+
 proc main() =
   verifyBasicWorldFlow()
   verifyDeferredOwnedCleanup()
   verifyOwnedComponentOverwrite()
   verifyWorldMoveDoesNotDoubleDestroy()
+  verifyWorldSinkAssignment()
 
 when isMainModule:
   main()

@@ -1,3 +1,5 @@
+import algorithm
+
 import ../src/pirata/slottables
 
 type
@@ -35,6 +37,44 @@ proc verifyMoveDoesNotDoubleDestroy() =
     doAssert movedTable[tracked].id == 1
   doAssert destroyedTokens.len == 1
 
+proc makeStringTable(): SlotTable[string] =
+  result = initSlotTableOfCap[string](4)
+  discard result.incl("booty")
+  discard result.incl("rum")
+
+proc verifyCopyProducesIndependentTable() =
+  var original = makeStringTable()
+  let first = original.incl("gold")
+  let second = original.incl("maps")
+  var copied = original
+
+  original.del(first)
+  doAssert not original.contains(first)
+  doAssert copied.contains(first)
+  doAssert copied[first] == "gold"
+  doAssert copied[second] == "maps"
+
+proc verifyDupProducesIndependentTable() =
+  var original = makeStringTable()
+  let first = original.incl("parrot")
+  var duplicated = `=dup`(original)
+
+  original.del(first)
+  doAssert not original.contains(first)
+  doAssert duplicated.contains(first)
+  doAssert duplicated[first] == "parrot"
+
+proc verifySinkReplacesOwnedStorage() =
+  var sinked = initSlotTableOfCap[string](2)
+  discard sinked.incl("stale")
+  sinked = makeStringTable()
+
+  var values: seq[string] = @[]
+  for entry in sinked.pairs:
+    values.add(entry.value)
+  values.sort()
+  doAssert values == @["booty", "rum"]
+
 proc main() =
   destroyedTokens.setLen(0)
   block:
@@ -49,6 +89,9 @@ proc main() =
     doAssert table[secondTracked].id == 2
     doAssert table[thirdTracked].id == 3
   doAssert destroyedTokens.len == 3
+  verifyCopyProducesIndependentTable()
+  verifyDupProducesIndependentTable()
+  verifySinkReplacesOwnedStorage()
   verifyMoveDoesNotDoubleDestroy()
 
 when isMainModule:

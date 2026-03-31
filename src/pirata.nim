@@ -32,12 +32,12 @@ proc allocColumn[T](capacity: int): pointer =
   else:
     result = allocShared0(bytes)
 
-proc destroyColumnSlots[T](data: pointer; capacity: int) {.raises: [].} =
+proc destroyColumnSlots[T](data: pointer; capacity: int) =
   when not supportsCopyMem(T):
     for slot in 0..<capacity:
       `=destroy`(asArray[T](data)[slot])
 
-proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
+proc `=destroy`*[K](world: var PirataWorld[K]) =
   for kind in low(K)..high(K):
     let col = world.registry[kind]
     if not col.data.isNil:
@@ -46,10 +46,16 @@ proc `=destroy`*[K](world: var PirataWorld[K]) {.raises: [].} =
       deallocShared(col.data)
   `=destroy`(world.signatures)
 
-proc `=wasMoved`*[K](world: var PirataWorld[K]) {.raises: [].} =
+proc `=wasMoved`*[K](world: var PirataWorld[K]) =
   `=wasMoved`(world.signatures)
   for kind in low(K)..high(K):
     world.registry[kind].data = nil
+
+proc `=sink`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) =
+  `=destroy`(dest)
+  `=sink`(dest.signatures, src.signatures)
+  dest.registry = src.registry
+  dest.capacity = src.capacity
 
 proc `=copy`*[K](dest: var PirataWorld[K]; src: PirataWorld[K]) {.error.}
 proc `=dup`*[K](src: PirataWorld[K]): PirataWorld[K] {.error.}
